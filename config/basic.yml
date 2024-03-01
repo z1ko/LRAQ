@@ -1,0 +1,38 @@
+program: train.py
+name: basic_sweep
+method: random
+
+metric:
+  name: validation/loss-mae
+  goal: minimize
+
+parameters:
+  scheduler_step:
+    value: 200
+  learning_rate:
+    values: [0.01, 0.001, 0.0001]
+  window_size:
+    value: 200
+  batch_size:
+    values: [8, 16, 32]
+  epochs: 
+    value: 5
+  dropout:
+    values: [0.2, 0.5, 0.8]
+  weight_decay:
+    value: 0.001
+
+  joint_features: 
+    value: 6
+  temporal_state_dim:
+    values: [16, 32, 64, 128]
+  model_dim:
+    values: [16, 32, 64, 128]
+  temporal_layers: 
+    values: [1, 2, 4, 8]
+  spatial_layers: 
+    values: [1, 2, 4, 8]
+  lru_min_radius: 
+    value: 0.4
+  lru_max_radius: 
+    value: 0.8

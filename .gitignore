@@ -1,0 +1,6 @@
+venv/
+**/__pycache__/
+wandb/
+runs/
+lightning_logs/
+data/
