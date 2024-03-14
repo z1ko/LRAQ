@@ -36,6 +36,7 @@ class SGULayer(nn.Module):
         model_dim,
         inner_dim,
         elements,
+        **kwargs
     ):
         super().__init__()
 
@@ -53,3 +54,8 @@ class SGULayer(nn.Module):
         x = self.spatial(x)
         x = self.proj_final(x)
         return x + r
+    
+# SGU layer with added semantic information
+class SemanticSGULayer(nn.Module):
+    def __init__(self):
+        super().__init__()

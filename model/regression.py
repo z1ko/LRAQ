@@ -3,7 +3,7 @@ import torch.nn as nn
 import einops as ein
 import lightning
 
-#from model.rnn.lru import LRULayer, LRU, LRUModel
+from model.temporal.lru import LRU
 from model.gtt import G2TAQ
 
 # How to model the temporal data
@@ -205,8 +205,8 @@ class LRGA(lightning.LightningModule):
             model_dim=32, 
             joint_count=joint_count, 
             joint_feaures=joint_features,
-            temporal_dim=64, 
-            spatial_dim=64
+            temporal_dim=32, 
+            spatial_dim=32
         )
 
     def forward(self, samples):

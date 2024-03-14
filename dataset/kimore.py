@@ -196,6 +196,8 @@ class KiMoReDataModule(lightning.LightningDataModule):
         opts.add_argument('--batch_size', type=int, default=12)
         opts.add_argument('--dataset', type=str)
 
+# =======================================================================================
+# PREPROCESS
 
 def _load_single_exercise(samples, data_descriptor, filepath):
     with open(filepath) as f:
@@ -248,9 +250,6 @@ def _load_evaluations(targets, data_descriptor, filepath):
             # Merge data
             for key, value in targets.items():
                 targets[key].append(eval_descriptor[key])
-
-# =======================================================================================
-# PREPROCESS
 
 if __name__ == '__main__':
 

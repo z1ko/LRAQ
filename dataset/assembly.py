@@ -4,17 +4,18 @@ import pickle
 import lightning
 import json
 import pandas as pd
+import einops as ein
 import numpy as np
 import operator
 import argparse
 import tqdm
-
 
 class AssemblyDataset(torch.utils.data.Dataset):
     def __init__(
         self,
         data_dir,
         split,
+        window_size,
         transform=[]
     ):
         super().__init__()
@@ -23,12 +24,25 @@ class AssemblyDataset(torch.utils.data.Dataset):
         self.labels = []
 
         # Load all data
-        for file in os.listdir(os.path.join(data_dir, split)):
-            with open(file, "rb") as f:
-                sample = pickle.load(file)
+        base_dir = os.path.join(data_dir, split)
+        for file in os.listdir(base_dir):
+            with open(os.path.join(base_dir, file), "rb") as f:
+                sample = pickle.load(f)
 
-            self.samples.append(sample['data'])
-            self.labels.append(sample['label'])
+            data = sample['data']
+            labels = sample['labels']
+
+            if data.shape[1] < window_size:
+                print(f'warning: sample {file} too small ({data.shape[1]}<{window_size})')
+                continue
+
+            # Merge the hands features, they can interact spatially
+            data = ein.rearrange(data, 'H T J D -> T (H J) D')
+
+            # Sliding windows
+            for beg in range(0, data.shape[0] - window_size, window_size):
+                self.samples.append(torch.tensor(data[beg:beg+window_size, ...], dtype=torch.float32))
+                self.labels.append(torch.tensor(labels[beg:beg+window_size, :], dtype=torch.int64))
             
     def __getitem__(self, idx):
         return self.samples[idx], self.labels[idx]
@@ -38,14 +52,15 @@ class AssemblyDataset(torch.utils.data.Dataset):
 
 
 class AssemblyDataModule(lightning.LightningDataModule):
-    def __init__(self, data_dir, batch_size):
+    def __init__(self, data_dir, batch_size, **kwargs):
         super().__init__()
         self.data_dir = data_dir
         self.batch_size = batch_size
+        self.kwargs = kwargs
 
     def setup(self, task=''):
-        self.training = AssemblyDataset(self.data_dir, 'train')
-        self.validation = AssemblyDataset(self.data_dir, 'validation')
+        self.training = AssemblyDataset(self.data_dir, 'train', **self.kwargs)
+        self.validation = AssemblyDataset(self.data_dir, 'validation', **self.kwargs)
 
     def train_dataloader(self):
         return torch.utils.data.DataLoader(
