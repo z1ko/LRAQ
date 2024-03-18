@@ -20,8 +20,8 @@ def train_model():
     )
 
     d = KiMoReDataModule(
-        data_dir='data/processed/kimore', 
-        exercise=1, 
+        data_dir='data/processed/kimore',
+        exercise=1,
         window_size=config.window_size,
         window_delta=config.window_size,
         batch_size=config.batch_size,
@@ -32,13 +32,13 @@ def train_model():
     )
     d.setup()
 
-    logger = WandbLogger(log_model='all', save_dir='runs/')
+    logger = WandbLogger(log_model=True, save_dir='runs/')
     logger.log_hyperparams(config)
 
     trainer = Trainer(max_epochs=config.epochs, logger=logger)
     trainer.fit(
         model, 
-        train_dataloaders=d.train_dataloader(), 
+        train_dataloaders=d.train_dataloader(),
         val_dataloaders=d.val_dataloader()
     )
 
