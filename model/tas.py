@@ -1,11 +1,13 @@
 import torch
 import torch.nn as nn
 import einops as ein
+import cairo
+import random
 import lightning
 
 from model.spatial.gmlp import SGULayer
 from model.temporal.lru import LRULayer
-from model.utils.criterion import mean_over_frames
+from model.utils.criterion import CEplusMSE, MeanOverFramesAccuracy, F1Score
 
 class LRTAS(nn.Module):
     def __init__(
@@ -92,6 +94,11 @@ class TemporalActionSegmentation(lightning.LightningModule):
         self.weight_decay = weight_decay
         self.scheduler_step = scheduler_step
 
+        # Criterions
+        self.ce_plus_mse = CEplusMSE()
+        self.mof = MeanOverFramesAccuracy()
+        self.f1 = F1Score(25)
+
         self.model = LRTAS(
             model_dim=model_dim, 
             joint_count=joint_count, 
@@ -103,46 +110,75 @@ class TemporalActionSegmentation(lightning.LightningModule):
             **kwargs
         )
 
-    def forward(self, x):
-        logits = self.model(x) # B T C
-        #probs = torch.softmax(logits, dim=2)
-        #prediction = torch.argmax(probs, dim=2)
-        #return prediction.to(dtype=torch.float32)
-        return logits
-
     def training_step(self, batch, batch_idx):     # (B L S F)
         samples, targets = batch
 
-        results = self.forward(samples)
+        results = self.model(samples) # B T C logits
+        loss = self.ce_plus_mse(results, targets)
 
-        # Frame wise cross entropy loss
-        frame_criterion = nn.CrossEntropyLoss(ignore_index=-100)
-        results = ein.rearrange(results, 'B T C -> B C T')
-        targets = ein.rearrange(targets, 'B T C -> B C T')
-        loss = frame_criterion(results, targets[:, 1, :])
+        self.log_dict({
+            "train/loss-ce+mse": loss["loss"],
+            "train/loss-mse": loss["loss_mse"],
+            "train/loss-ce": loss["loss_ce"],
+        }, prog_bar=True)
 
-        #results = self.forward(samples)
-        #loss = mean_over_frames(results, targets[:, :, 1])
-
-        self.log("train/loss-ce", loss, prog_bar=True)
-        return loss
+        return loss['loss']
 
     def validation_step(self, batch, batch_idx):
         samples, targets = batch
 
-        results = self.forward(samples)
+        # Get network predictions
+        logits = self.model(samples)
+        probs = torch.softmax(logits, dim=2)
+        results = torch.argmax(probs, dim=2)
 
-        # Frame wise cross entropy loss
-        frame_criterion = nn.CrossEntropyLoss(ignore_index=-100)
-        results = ein.rearrange(results, 'B T C -> B C T')
-        targets = ein.rearrange(targets, 'B T C -> B C T')
-        loss = frame_criterion(results, targets[:, 1, :])
+        loss_mof = self.mof(results, targets)
+        loss_f1 = self.f1(results, targets)
+        loss_edit = self.edit(results, targets)
 
-        #results = self.forward(samples)
-        #loss = mean_over_frames(results, targets[:, :, 1])
+        self.log_dict({
+            'validation/loss-mof': loss_mof,
+            'validation/loss-f1': loss_f1,
+            'validation/loss-edit': loss_edit
+        }, prog_bar=True)
 
-        self.log("validation/loss-ce", loss, prog_bar=True)
-        return loss
+        return loss_mof + loss_f1 + loss_edit
+
+    # Show temporal segmentation of a single sample
+        #    def visualize(self, x, output_file=None):
+        #        samples, targets = x
+        #
+        #        logits = self.model(samples)
+        #        probs = torch.softmax(logits, dim=2)
+        #        results = torch.argmax(probs, dim=2)
+        #
+        #        # Create one color for each action class
+        #        colors = []
+        #        for _ in range(25):
+        #            colors.append((random.random(), random.random(), random.random()))
+        #
+        #        frames = samples.shape[0]
+        #        with cairo.ImageSurface(cairo.FORMAT_ARGB32, frames, 100 + 100 + 20) as surface:
+        #            ctx = cairo.Context(surface)
+        #
+        #            for frame in range(frames):
+        #                pred, target = results[frame], targets[frame]
+        #
+        #                # ground truth
+        #                ctx.set_source_rgb(*colors[target])
+        #                ctx.move_to(float(frame), 0)
+        #                ctx.line_to(float(frame), 100)
+        #                ctx.stroke()
+        #
+        #                # result prediction
+        #                ctx.set_source_rgb(*colors[pred])
+        #                ctx.move_to(float(frame), 120)
+        #                ctx.line_to(float(frame), 220)
+        #                ctx.stroke()
+        #
+        #            if output_file is not None:
+        #                surface.write_to_png(output_file)
+        #
 
     def configure_optimizers(self):
         params = list(self.model.parameters())

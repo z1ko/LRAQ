@@ -4,22 +4,26 @@ import torch.nn.functional as F
 import einops as ein
 import numpy as np
 
+def _get_labels_start_end_time(frame_wise_labels, ignored_classes=[-100]):
+    labels = []
+    starts = []
+    ends = []
+    last_label = frame_wise_labels[0]
+    if frame_wise_labels[0] not in ignored_classes:
+        labels.append(frame_wise_labels[0])
+        starts.append(0)
+    for i in range(len(frame_wise_labels)):
+        if frame_wise_labels[i] != last_label:
+            if frame_wise_labels[i] not in ignored_classes:
+                labels.append(frame_wise_labels[i])
+                starts.append(i)
+            if last_label not in ignored_classes:
+                ends.append(i)
+            last_label = frame_wise_labels[i]
+    if last_label not in ignored_classes:
+        ends.append(i + 1)
+    return labels, starts, ends
 
-#def narrow_gaussian(x, ell):
-#    return torch.exp(-0.5 * (x / ell) ** 2)
-#
-## The spice must flow
-#def approx_count_nonzero(x, ell=1e-3):
-#    return len(x) - narrow_gaussian(x, ell).sum(dim=-1)
-#
-#def mean_over_frames(input, target):
-#    assert(input.shape == target.shape)
-#    T = input.shape[1]
-#
-#    difference = input - target
-#    zeros = T - approx_count_nonzero(difference)
-#    mof = zeros / T
-#    return mof.mean()
 
 # NOTE: used for training
 class CEplusMSE(nn.Module):
@@ -62,7 +66,7 @@ class MeanOverFramesAccuracy:
         self.total = 0
         self.correct = 0
 
-    def forward(self, predictions: torch.Tensor, targets: torch.Tensor):
+    def forward(self, predictions: torch.Tensor, targets: torch.Tensor) -> float:
         """
         :param predictions: [batch_size, seq_len]
         :param targets: [batch_size, seq_len]
@@ -87,12 +91,13 @@ class F1Score:
         self.fp = np.zeros((len(overlaps), classes))
         self.fn = np.zeros((len(overlaps), classes))
 
-    def forward(self, predictions, targets):
+    def forward(self, predictions, targets) -> float:
         """
         :param predictions: [batch_size, seq_len]
         :param targets: [batch_size, seq_len]
         """
 
+        batch_scores = []
         result = {}
 
         predictions, targets = np.array(predictions), np.array(targets)
@@ -117,7 +122,28 @@ class F1Score:
 
     @staticmethod
     def f_score(predictions, targets, overlap):
-        pass
+        p_label, p_start, p_end = _get_labels_start_end_time(predictions)
+        y_label, y_start, y_end = _get_labels_start_end_time(targets)
+
+        tp = 0
+        fp = 0
+
+        hits = np.zeros(len(y_label))
+
+        for j in range(len(p_label)):
+            intersection = np.minimum(p_end[j], y_end) - np.maximum(p_start[j], y_start)
+            union = np.maximum(p_end[j], y_end) - np.minimum(p_start[j], y_start)
+            IoU = (1.0*intersection / union)*([p_label[j] == y_label[x] for x in range(len(y_label))])
+            # Get the best scoring segment
+            idx = np.array(IoU).argmax()
+
+            if IoU[idx] >= overlap and not hits[idx]:
+                tp += 1
+                hits[idx] = 1
+            else:
+                fp += 1
+        fn = len(y_label) - sum(hits)
+        return float(tp), float(fp), float(fn)
 
     @staticmethod
     def get_f1_score(tp, fp, fn):
@@ -133,3 +159,52 @@ class F1Score:
         else:
             return 0.0
 
+class EditDistance:
+    def forward(self, predictions: torch.Tensor, targets: torch.Tensor) -> float:
+        """
+        :param predictions: [batch_size, seq_len]
+        :param targets: [batch_size, seq_len]
+        """
+
+        batch_scores = []
+        predictions, targets = np.array(predictions), np.array(targets)
+        for pred, target in zip(predictions, targets):
+            batch_scores.append(self.edit_score(
+                predictions=pred.tolist(),
+                targets=target.tolist()
+            ))
+
+        # Mean in the batch
+        return sum(batch_scores) / len(batch_scores)
+    
+    @staticmethod
+    def edit_score(predictions, targets, norm=True):
+        P, _, _ = _get_labels_start_end_time(predictions)
+        Y, _, _ = _get_labels_start_end_time(targets)
+        return EditDistance.levenstein(P, Y, norm)
+    
+    @staticmethod
+    def levenstein(p, y, norm=False):
+        m_row = len(p) 
+        n_col = len(y)
+        D = np.zeros([m_row+1, n_col+1], float)
+        for i in range(m_row+1):
+            D[i, 0] = i
+        for i in range(n_col+1):
+            D[0, i] = i
+
+        for j in range(1, n_col+1):
+            for i in range(1, m_row+1):
+                if y[j-1] == p[i-1]:
+                    D[i, j] = D[i-1, j-1]
+                else:
+                    D[i, j] = min(D[i-1, j] + 1,
+                                D[i, j-1] + 1,
+                                D[i-1, j-1] + 1)
+        
+        if norm:
+            score = (1 - D[-1, -1]/max(m_row, n_col)) * 100
+        else:
+            score = D[-1, -1]
+
+        return score
