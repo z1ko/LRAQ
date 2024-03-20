@@ -60,10 +60,6 @@ class CEplusMSE(nn.Module):
         return loss_dict
 
 class MeanOverFramesAccuracy:
-    def __init__(self):
-        self.total = 0
-        self.correct = 0
-
     def __call__(self, predictions: torch.Tensor, targets: torch.Tensor) -> float:
         """
         :param predictions: [batch_size, seq_len]
@@ -74,9 +70,6 @@ class MeanOverFramesAccuracy:
         total = predictions.shape[-1]
         correct = (predictions == targets).sum()
         result = correct / total if total != 0 else 0
-
-        self.total += total
-        self.correct += correct
         return result
 
 
@@ -99,6 +92,7 @@ class F1Score:
         for o in self.overlaps:
             result[f'F1@{int(o*100)}'] = 0.0
 
+        batches_count = prediction.shape[0]
         predictions, targets = np.array(predictions.cpu()), np.array(targets.cpu())
         for p, t in zip(predictions, targets):
             for i, overlap in enumerate(self.overlaps):
@@ -116,7 +110,7 @@ class F1Score:
                 result[f'F1@{int(overlap*100)}'] += f1
 
         for o in self.overlaps:
-            result[f'F1@{int(o*100)}'] /= len(predictions) 
+            result[f'F1@{int(o*100)}'] /= batches_count 
         return result
 
     @staticmethod
@@ -159,6 +153,9 @@ class F1Score:
             return 0.0
 
 class EditDistance:
+    def __init__(self, normalize):
+        self.normalize = normalize
+
     def __call__(self, predictions: torch.Tensor, targets: torch.Tensor) -> float:
         """
         :param predictions: [batch_size, seq_len]
@@ -170,7 +167,8 @@ class EditDistance:
         for pred, target in zip(predictions, targets):
             batch_scores.append(self.edit_score(
                 predictions=pred.tolist(),
-                targets=target.tolist()
+                targets=target.tolist(),
+                norm=self.normalize
             ))
 
         # Mean in the batch
@@ -207,3 +205,24 @@ class EditDistance:
             score = D[-1, -1]
 
         return score
+
+# =================================================================
+# TEST
+    
+if __name__ == '__main__':
+
+    ground_truth = torch.zeros((1, 10))
+    ground_truth[0, 4:5] = 2
+
+    prediction = torch.zeros((1, 10))
+    prediction[0, 2:5] = 1
+
+    mof = MeanOverFramesAccuracy()
+    edit = EditDistance(True)
+    f1 = F1Score(2)
+
+    print({
+        'mof': mof(prediction, ground_truth),
+        'edit': edit(prediction, ground_truth),
+        'f1': f1(prediction, ground_truth)
+    })
