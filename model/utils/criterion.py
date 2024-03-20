@@ -32,12 +32,12 @@ class CEplusMSE(nn.Module):
     https://arxiv.org/abs/1903.01945
     """
 
-    def __init__(self, opts):
+    def __init__(self, num_classes, alpha=0.5):
         super().__init__()
         self.ce = nn.CrossEntropyLoss(ignore_index=-100)
         self.mse = nn.MSELoss(reduction='none')
-        self.alpha = opts.loss_alpha
-        self.classes = opts.classes
+        self.classes = num_classes
+        self.alpha = alpha
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor):
         """
@@ -46,17 +46,15 @@ class CEplusMSE(nn.Module):
         """
 
         loss_dict = { 'loss': 0.0, 'loss_ce': 0.0, 'loss_mse': 0.0 }
-        for p in logits:
 
-            loss_dict['loss_ce'] += self.ce(
-                ein.rearrange(p, "b classes seq_len -> (b seq_len) classes"),
-                ein.rearrange(targets, "b seq_len -> (b seq_len)")
-            )
-
-            loss_dict['loss_mse'] += torch.mean(torch.clamp(self.mse(
-                F.log_softmax(p[:, :, 1:], dim=1),
-                F.log_softmax(p.detach()[:, :, :-1], dim=1)
-            )))
+        loss_dict['loss_ce'] += self.ce(
+            ein.rearrange(logits, "batch_size classes seq_len -> (batch_size seq_len) classes"),
+            ein.rearrange(targets, "batch_size seq_len -> (batch_size seq_len)")
+        )
+        loss_dict['loss_mse'] += torch.mean(torch.clamp(self.mse(
+            F.log_softmax(logits[:, :, 1:], dim=1),
+            F.log_softmax(logits.detach()[:, :, :-1], dim=1)
+        ), min=0.0))
 
         loss_dict['loss'] = loss_dict['loss_ce'] + self.alpha * loss_dict['loss_mse']
         return loss_dict
@@ -66,13 +64,13 @@ class MeanOverFramesAccuracy:
         self.total = 0
         self.correct = 0
 
-    def forward(self, predictions: torch.Tensor, targets: torch.Tensor) -> float:
+    def __call__(self, predictions: torch.Tensor, targets: torch.Tensor) -> float:
         """
         :param predictions: [batch_size, seq_len]
         :param targets: [batch_size, seq_len]
         """
 
-        predictions, targets = np.array(predictions), np.array(targets)
+        predictions, targets = np.array(predictions.cpu()), np.array(targets.cpu())
         total = predictions.shape[-1]
         correct = (predictions == targets).sum()
         result = correct / total if total != 0 else 0
@@ -83,27 +81,26 @@ class MeanOverFramesAccuracy:
 
 
 class F1Score:
-    def __init__(self, classes, overlaps = [0.1, 0.25, 0.5]):
+    def __init__(self, num_classes, overlaps = [0.1, 0.25, 0.5]):
         self.overlaps = overlaps
-        self.classes = classes
+        self.classes = num_classes
 
-        self.tp = np.zeros((len(overlaps), classes))
-        self.fp = np.zeros((len(overlaps), classes))
-        self.fn = np.zeros((len(overlaps), classes))
+        self.tp = np.zeros((len(overlaps), num_classes))
+        self.fp = np.zeros((len(overlaps), num_classes))
+        self.fn = np.zeros((len(overlaps), num_classes))
 
-    def forward(self, predictions, targets) -> float:
+    def __call__(self, predictions, targets) -> float:
         """
         :param predictions: [batch_size, seq_len]
         :param targets: [batch_size, seq_len]
         """
 
-        batch_scores = []
         result = {}
+        for o in self.overlaps:
+            result[f'F1@{int(o*100)}'] = 0.0
 
-        predictions, targets = np.array(predictions), np.array(targets)
+        predictions, targets = np.array(predictions.cpu()), np.array(targets.cpu())
         for p, t in zip(predictions, targets):
-            result = {}
-
             for i, overlap in enumerate(self.overlaps):
                 tp, fp, fn = self.f_score(
                     p.tolist(),
@@ -116,8 +113,10 @@ class F1Score:
                 self.fn[i] += fn
 
                 f1 = self.get_f1_score(tp, fp, fn)
-                result[f'F1@{overlap*100}'] = f1
+                result[f'F1@{int(overlap*100)}'] += f1
 
+        for o in self.overlaps:
+            result[f'F1@{int(o*100)}'] /= len(predictions) 
         return result
 
     @staticmethod
@@ -160,14 +159,14 @@ class F1Score:
             return 0.0
 
 class EditDistance:
-    def forward(self, predictions: torch.Tensor, targets: torch.Tensor) -> float:
+    def __call__(self, predictions: torch.Tensor, targets: torch.Tensor) -> float:
         """
         :param predictions: [batch_size, seq_len]
         :param targets: [batch_size, seq_len]
         """
 
         batch_scores = []
-        predictions, targets = np.array(predictions), np.array(targets)
+        predictions, targets = np.array(predictions.cpu()), np.array(targets.cpu())
         for pred, target in zip(predictions, targets):
             batch_scores.append(self.edit_score(
                 predictions=pred.tolist(),

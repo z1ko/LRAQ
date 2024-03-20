@@ -1,13 +1,12 @@
 import torch
 import torch.nn as nn
 import einops as ein
-import cairo
 import random
 import lightning
 
 from model.spatial.gmlp import SGULayer
 from model.temporal.lru import LRULayer
-from model.utils.criterion import CEplusMSE, MeanOverFramesAccuracy, F1Score
+from model.utils.criterion import CEplusMSE, MeanOverFramesAccuracy, F1Score, EditDistance
 
 class LRTAS(nn.Module):
     def __init__(
@@ -39,7 +38,13 @@ class LRTAS(nn.Module):
             nn.GELU(),
             nn.Linear(model_dim * 5, model_dim)
         )
-        
+
+	# Near temporal aggregator
+        self.conv_near = nn.Conv1d(model_dim, model_dim, kernel_size=5, padding='same')
+        self.conv_medium = nn.Conv1d(model_dim, model_dim, kernel_size=15, padding='same')
+        self.conv_far = nn.Conv1d(model_dim, model_dim, kernel_size=35, padding='same')
+        self.conv_agg = nn.Linear(model_dim * 4, model_dim)
+
         # Temporal evolution
         self.temporal_layers = nn.ModuleList()
         for _ in range(temporal_layers_count):
@@ -63,8 +68,19 @@ class LRTAS(nn.Module):
 
         x = ein.rearrange(x, 'B T J D -> B T (J D)')
         x = self.spatial_agg(x) # B T M
+        
+        # Local temporal kernels
+        x = ein.rearrange(x, 'B T M -> B M T')
+        a = self.conv_near(x)
+        b = self.conv_medium(x)
+        c = self.conv_far(x)
+        x = torch.cat([x, a, b, c], dim=1)
 
-        # Temporal reasoning
+        # Condense local kernels
+        x = ein.rearrange(x, 'B M T -> B T M')
+        x = self.conv_agg(x)
+
+        # Long range temporal reasoning
         B, T, M = x.shape
         for layer in self.temporal_layers:
             x = layer(x) # B T M
@@ -95,9 +111,10 @@ class TemporalActionSegmentation(lightning.LightningModule):
         self.scheduler_step = scheduler_step
 
         # Criterions
-        self.ce_plus_mse = CEplusMSE()
+        self.ce_plus_mse = CEplusMSE(num_classes=25, alpha=0.17)
+        self.edit = EditDistance()
         self.mof = MeanOverFramesAccuracy()
-        self.f1 = F1Score(25)
+        self.f1 = F1Score(num_classes=25)
 
         self.model = LRTAS(
             model_dim=model_dim, 
@@ -114,13 +131,14 @@ class TemporalActionSegmentation(lightning.LightningModule):
         samples, targets = batch
 
         results = self.model(samples) # B T C logits
-        loss = self.ce_plus_mse(results, targets)
+        results = ein.rearrange(results, "B T C -> B C T")
+        loss = self.ce_plus_mse(results, targets[:, :, 1])
 
+        self.log('train/loss-ce+mse', loss["loss"], prog_bar=True)
         self.log_dict({
-            "train/loss-ce+mse": loss["loss"],
             "train/loss-mse": loss["loss_mse"],
             "train/loss-ce": loss["loss_ce"],
-        }, prog_bar=True)
+        }, prog_bar=False)
 
         return loss['loss']
 
@@ -132,17 +150,23 @@ class TemporalActionSegmentation(lightning.LightningModule):
         probs = torch.softmax(logits, dim=2)
         results = torch.argmax(probs, dim=2)
 
-        loss_mof = self.mof(results, targets)
-        loss_f1 = self.f1(results, targets)
-        loss_edit = self.edit(results, targets)
+        loss_mof = self.mof(results, targets[:, :, 1])
+        loss_f1 = self.f1(results, targets[:, :, 1])
+        loss_f1_total = loss_f1["F1@10"] + loss_f1["F1@25"] + loss_f1["F1@50"]
+        loss_edit = self.edit(results, targets[:, :, 1])
+        loss_total = loss_mof + loss_f1_total + loss_edit
 
+        self.log('validation/loss-total', loss_total, prog_bar=True)
         self.log_dict({
             'validation/loss-mof': loss_mof,
-            'validation/loss-f1': loss_f1,
-            'validation/loss-edit': loss_edit
-        }, prog_bar=True)
+            'validation/loss-edit': loss_edit,
+            'validation/loss-F1@10': loss_f1['F1@10'],
+            'validation/loss-F1@25': loss_f1['F1@25'],
+            'validation/loss-F1@50': loss_f1['F1@50'],
+            'validation/loss-F1': loss_f1_total,
+        }, prog_bar=False)
 
-        return loss_mof + loss_f1 + loss_edit
+        return loss_total
 
     # Show temporal segmentation of a single sample
         #    def visualize(self, x, output_file=None):

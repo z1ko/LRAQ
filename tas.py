@@ -16,21 +16,21 @@ from model.tas import TemporalActionSegmentation
 d = AssemblyDataModule(
     'data/processed/assembly', 
     batch_size=6,
-    window_size=5000
+    window_size=2000
 )
 d.setup()
 
 model = TemporalActionSegmentation(
-    model_dim=64,
-    learning_rate=0.001,
-    weight_decay=0.005,
-    scheduler_step=200,
+    model_dim=100,
+    learning_rate=0.00001,
+    weight_decay=0.0005,
+    scheduler_step=30,
     joint_count=2*21,
     joint_features=3,
-    temporal_state_dim=128,
+    temporal_state_dim=256,
     spatial_state_dim=64,
-    temporal_layers=3,
-    spatial_layers=3
+    temporal_layers=6,
+    spatial_layers=2
 )
 
 #logger = None
@@ -38,7 +38,8 @@ model = TemporalActionSegmentation(
 #    logger = WandbLogger(save_dir='runs/')
 #    logger.log_hyperparams(opts)
 
-trainer = Trainer(max_epochs=20, detect_anomaly=True, overfit_batches=0.1)
+logger = WandbLogger(save_dir='runs/')
+trainer = Trainer(max_epochs=150, logger=logger)
 trainer.fit(
     model, 
     train_dataloaders=d.train_dataloader(), 
