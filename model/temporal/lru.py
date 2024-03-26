@@ -98,6 +98,24 @@ class LRU(nn.Module):
         opts.add_argument('--lru_radius_min', type=float, default=0.4)
         opts.add_argument('--lru_radius_max', type=float, default=0.8)
 
+class CausalConv1d(nn.Module):
+    """
+    Causal convolution per easier online inference
+    """
+    
+    def __init__(self, input_dim, output_dim, kernel_size, dilation=1):
+        super().__init__()
+
+        pad = (kernel_size - 1) * dilation
+        self.conv = nn.Conv1d(input_dim, output_dim, kernel_size, 
+                              padding=pad, dilation=dilation)
+
+    def forward(self, x): # [B, D, T]
+        x = self.conv(x)
+        x = x[:, :, :-self.conv.padding[0]] # remove trailing padding
+        return 
+
+
 class LRULayer(nn.Module):
     def __init__(
         self,
@@ -113,7 +131,10 @@ class LRULayer(nn.Module):
         self.norm = nn.LayerNorm(model_dim)
         self.proj_initial = nn.Linear(model_dim, state_dim * 2, bias=False)
         self.activation = nn.GELU()
+        
         self.conv = nn.Conv1d(state_dim, state_dim, kernel_size=temporal_k_size, padding='same')
+        #self.conv = CausalConv1d(state_dim, state_dim, kernel_size=temporal_k_size, dilation=2)
+
         self.temporal = LRU(state_dim, **kwargs)
         self.proj_final = nn.Linear(state_dim, model_dim)
 

@@ -22,6 +22,14 @@ def visualize(prediction, target, num_classes, output_file=None):
         for frame in range(frames):
             pred, tar = int(prediction[frame]), int(target[frame])
 
+            # The ignore class sets everything to black
+            if tar == -100:
+                ctx.set_source_rgb(0, 0, 0)
+                ctx.move_to(float(frame), 0.0)
+                ctx.line_to(float(frame), 220.0)
+                ctx.stroke()
+                continue
+
             # ground truth
             if tar == 0:
                 ctx.set_source_rgb(0, 0, 0)

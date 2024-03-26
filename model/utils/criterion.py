@@ -32,7 +32,7 @@ class CEplusMSE(nn.Module):
     https://arxiv.org/abs/1903.01945
     """
 
-    def __init__(self, num_classes, alpha=0.5):
+    def __init__(self, num_classes, alpha=0.17):
         super().__init__()
         self.ce = nn.CrossEntropyLoss(ignore_index=-100)
         self.mse = nn.MSELoss(reduction='none')
@@ -47,14 +47,17 @@ class CEplusMSE(nn.Module):
 
         loss_dict = { 'loss': 0.0, 'loss_ce': 0.0, 'loss_mse': 0.0 }
 
-        loss_dict['loss_ce'] += self.ce(
+        # Frame level classification
+        loss_dict['loss_ce'] = self.ce(
             ein.rearrange(logits, "batch_size classes seq_len -> (batch_size seq_len) classes"),
             ein.rearrange(targets, "batch_size seq_len -> (batch_size seq_len)")
         )
-        loss_dict['loss_mse'] += torch.mean(torch.clamp(self.mse(
+
+        # Neighbour frames should have similar values
+        loss_dict['loss_mse'] = torch.mean(torch.clamp(self.mse(
             F.log_softmax(logits[:, :, 1:], dim=1),
             F.log_softmax(logits.detach()[:, :, :-1], dim=1)
-        ), min=0.0))
+        ), min=0.0, max=16.0))
 
         loss_dict['loss'] = loss_dict['loss_ce'] + self.alpha * loss_dict['loss_mse']
         return loss_dict
@@ -67,8 +70,12 @@ class MeanOverFramesAccuracy:
         """
 
         predictions, targets = np.array(predictions.cpu()), np.array(targets.cpu())
-        total = predictions.shape[-1]
-        correct = (predictions == targets).sum()
+
+        # Skip all padding
+        mask = np.logical_not(np.isin(targets, [-100]))
+
+        total = mask.sum()
+        correct = (predictions == targets)[mask].sum()
         result = correct / total if total != 0 else 0
         return result
 
@@ -92,9 +99,15 @@ class F1Score:
         for o in self.overlaps:
             result[f'F1@{int(o*100)}'] = 0.0
 
-        batches_count = prediction.shape[0]
+        batches_count = predictions.shape[0]
         predictions, targets = np.array(predictions.cpu()), np.array(targets.cpu())
         for p, t in zip(predictions, targets):
+
+            # Skip all padding
+            mask = np.logical_not(np.isin(t, [-100]))
+            t = t[mask]
+            p = p[mask]
+
             for i, overlap in enumerate(self.overlaps):
                 tp, fp, fn = self.f_score(
                     p.tolist(),
@@ -114,9 +127,9 @@ class F1Score:
         return result
 
     @staticmethod
-    def f_score(predictions, targets, overlap):
-        p_label, p_start, p_end = _get_labels_start_end_time(predictions)
-        y_label, y_start, y_end = _get_labels_start_end_time(targets)
+    def f_score(predictions, targets, overlap, ignore_classes=[-100]):
+        p_label, p_start, p_end = _get_labels_start_end_time(predictions, ignore_classes)
+        y_label, y_start, y_end = _get_labels_start_end_time(targets, ignore_classes)
 
         tp = 0
         fp = 0
@@ -165,6 +178,12 @@ class EditDistance:
         batch_scores = []
         predictions, targets = np.array(predictions.cpu()), np.array(targets.cpu())
         for pred, target in zip(predictions, targets):
+
+            # Skip all padding
+            mask = np.logical_not(np.isin(target, [-100]))
+            target = target[mask]
+            pred = pred[mask]
+
             batch_scores.append(self.edit_score(
                 predictions=pred.tolist(),
                 targets=target.tolist(),
@@ -175,9 +194,9 @@ class EditDistance:
         return sum(batch_scores) / len(batch_scores)
     
     @staticmethod
-    def edit_score(predictions, targets, norm=True):
-        P, _, _ = _get_labels_start_end_time(predictions)
-        Y, _, _ = _get_labels_start_end_time(targets)
+    def edit_score(predictions, targets, norm=True, ignore_classes=[-100]):
+        P, _, _ = _get_labels_start_end_time(predictions, ignore_classes)
+        Y, _, _ = _get_labels_start_end_time(targets, ignore_classes)
         return EditDistance.levenstein(P, Y, norm)
     
     @staticmethod
@@ -213,6 +232,7 @@ if __name__ == '__main__':
 
     ground_truth = torch.zeros((1, 10))
     ground_truth[0, 4:5] = 2
+    ground_truth[0, 7:10] = -100
 
     prediction = torch.zeros((1, 10))
     prediction[0, 2:5] = 1

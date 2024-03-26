@@ -100,19 +100,21 @@ class Assembly101TSMDataset(torch.utils.data.Dataset):
         self,
         mode,
         path_to_data,
-        frames=4000
+        views=VIEWS,
+        max_frames=1000000
     ):
         super().__init__()
         assert mode in ['train', 'val']
 
         self.mode = mode
-        self.frames = frames
+        self.views = views
+        self.max_frames=max_frames
 
         # Load all view databases
         self.path_to_data = path_to_data
         self.envs = {view: lmdb.open(f'{self.path_to_data}/TSM/{view}', 
                                      readonly=True, 
-                                     lock=False) for view in VIEWS}
+                                     lock=False) for view in self.views}
         
         # Load actions and data
         actions_path = os.path.join(self.path_to_data, 'coarse-annotations', 'actions.csv')
@@ -129,26 +131,27 @@ class Assembly101TSMDataset(torch.utils.data.Dataset):
         for _, entry in tqdm(data_df.iterrows(), total=len(data_df)):
             sample = entry.to_dict()
             
+            # Skip views no required
+            if sample['view'] not in self.views:
+                continue
+
             segm_filename = f"{sample['action_type']}_{sample['video_id']}.txt"
             segm_path = os.path.join(annotations_path, "coarse_labels", segm_filename)
             segm, start_frame, end_frame = self.load_segmentation(segm_path, self.actions)
 
-            segm_len = len(segm)
-            max_len = max(max_len, segm_len)
-            min_len = min(min_len, segm_len)
+            max_len = max(max_len, len(segm))
+            min_len = min(min_len, len(segm))
 
-            # Removes samples too short
-            if len(segm) < self.frames:
-                continue
+            # Skip data with too foo frames
+            #if len(segm) < self.max_frames:
+            #    continue
 
-            # sliding window
-            for beg in range(0, segm_len - self.frames, self.frames):
-                sample['segm'] = segm[beg:beg+self.frames]
-                sample['start_frame'] = start_frame + beg
-                sample['end_frame'] = start_frame + beg + self.frames
-                video_data.append(sample)
+            sample['segm'] = segm[:min(len(segm), self.max_frames)]
+            sample['start_frame'] = start_frame
+            sample['end_frame'] = min(end_frame, start_frame + self.max_frames)
+            video_data.append(sample)
         
-        print(f'max_frames={max_len}, min_frames={min_len}')
+        print(f'elements={len(video_data)}, max_frames={max_len}, min_frames={min_len}')
         return video_data
 
     def load_segmentation(self, segm_path, actions):
@@ -184,10 +187,14 @@ class Assembly101TSMDataset(torch.utils.data.Dataset):
             for i in range(data_dict['start_frame'], data_dict['end_frame']):
                 key = os.path.join(data_dict['video_id'], f'{view}/{view}_{i:010d}.jpg')
                 frame_data = e.get(key.strip().encode('utf-8'))
+                if frame_data is None:
+                    print(f"[!] No data found for key={key}.")
+                    exit(2)
+
                 frame_data = np.frombuffer(frame_data, 'float32')
                 elements.append(frame_data)
 
-        features = np.array(elements).T # [D, T]
+        features = np.array(elements) # [T, D]
         return features
 
     def __getitem__(self, idx):
@@ -195,9 +202,14 @@ class Assembly101TSMDataset(torch.utils.data.Dataset):
         data_dict = self.data[idx]
         targets = data_dict['segm']
 
-        sample['features'] = torch.tensor(self.load_features(data_dict)[:, :self.frames])
-        sample['targets'] = torch.tensor(targets[:self.frames]).long()
+        features = self.load_features(data_dict)
+        sample['features'] = torch.tensor(features[:self.max_frames])
+        sample['targets'] = torch.tensor(targets).long()
         sample['video_name'] = os.path.join(data_dict['action_type'], data_dict['video_id'], data_dict['view'])
+        sample['start_frame'] = data_dict['start_frame']
+        sample['end_frame'] = data_dict['end_frame']
+        sample['video_id'] = data_dict['video_id']
+
         return sample
 
     def __len__(self):
@@ -354,23 +366,31 @@ class Assembly101TSMDataset(torch.utils.data.Dataset):
 
 # How to combine multiple samples in a sigle batch
 def collate(data):
-
-    samples, targets = [], []
+    samples, targets, metadata = [], [], []
     for data_dict in data:
         samples.append(data_dict['features'])
         targets.append(data_dict['targets'])
+        metadata.append({
+            'video_id': data_dict['video_id'],
+            'start_frame': data_dict['start_frame'],
+            'end_frame': data_dict['end_frame']
+        })
 
-    return torch.stack(samples), torch.stack(targets)
+    # pad to longest sequence
+    samples = torch.nn.utils.rnn.pad_sequence(samples, batch_first=True)
+    targets = torch.nn.utils.rnn.pad_sequence(targets, batch_first=True, padding_value=-100)
+    return samples, targets, metadata
 
 class AssemblyTSMModule(lightning.LightningDataModule):
-    def __init__(self, path_to_data, batch_size):
+    def __init__(self, path_to_data, batch_size, views=VIEWS):
         super().__init__()
         self.batch_size = batch_size
         self.path_to_data = path_to_data
+        self.views = views
 
     def setup(self, task=''):
-        self.training = Assembly101TSMDataset(mode='train', path_to_data=self.path_to_data)
-        self.validation = Assembly101TSMDataset(mode='val', path_to_data=self.path_to_data)
+        self.training = Assembly101TSMDataset(mode='train', views=self.views, path_to_data=self.path_to_data)
+        self.validation = Assembly101TSMDataset(mode='val', views=self.views, path_to_data=self.path_to_data)
 
     def train_dataloader(self):
         return torch.utils.data.DataLoader(
@@ -379,7 +399,6 @@ class AssemblyTSMModule(lightning.LightningDataModule):
             shuffle=True,
             pin_memory=True,
             collate_fn=collate,
-            num_workers=8
         )
 
     def val_dataloader(self):
@@ -388,7 +407,6 @@ class AssemblyTSMModule(lightning.LightningDataModule):
             self.batch_size,
             pin_memory=True,
             collate_fn=collate,
-            num_workers=8
         )
 
 # =======================================================================================
@@ -514,6 +532,4 @@ if __name__ == '__main__':
         datamodule.setup()
 
         loader = datamodule.train_dataloader()
-        samples, targets = next(iter(loader))
-
-        a = 0
+        samples, targets, metadata = next(iter(loader))

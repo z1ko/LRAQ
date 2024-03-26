@@ -1,12 +1,15 @@
 import torch
 import torch.nn as nn
 import einops as ein
-import random
+import numpy as np
 import lightning
+
+from tqdm import tqdm
 
 from model.spatial.gmlp import SGULayer
 from model.temporal.lru import LRULayer
 from model.utils.criterion import CEplusMSE, MeanOverFramesAccuracy, F1Score, EditDistance
+from model.utils.visualize import visualize
 
 class LRTAS(nn.Module):
     def __init__(
@@ -39,17 +42,17 @@ class LRTAS(nn.Module):
             nn.Linear(model_dim * 5, model_dim)
         )
 
-	# Near temporal aggregator
-        self.conv_near = nn.Conv1d(model_dim, model_dim, kernel_size=5, padding='same')
-        self.conv_medium = nn.Conv1d(model_dim, model_dim, kernel_size=15, padding='same')
-        self.conv_far = nn.Conv1d(model_dim, model_dim, kernel_size=35, padding='same')
-        self.conv_agg = nn.Linear(model_dim * 4, model_dim)
+	    # Near temporal aggregator
+        #self.conv_near = nn.Conv1d(model_dim, model_dim, kernel_size=5, padding='same')
+        #self.conv_medium = nn.Conv1d(model_dim, model_dim, kernel_size=15, padding='same')
+        #self.conv_far = nn.Conv1d(model_dim, model_dim, kernel_size=35, padding='same')
+        #self.conv_agg = nn.Linear(model_dim * 4, model_dim)
 
         # Temporal evolution
         self.temporal_layers = nn.ModuleList()
         for _ in range(temporal_layers_count):
             self.temporal_layers.append(
-                LRULayer(model_dim, temporal_dim, 5, True, **kwargs)
+                LRULayer(model_dim, temporal_dim, 30, True, **kwargs)
             )
 
         # Final frame classifier
@@ -70,15 +73,15 @@ class LRTAS(nn.Module):
         x = self.spatial_agg(x) # B T M
         
         # Local temporal kernels
-        x = ein.rearrange(x, 'B T M -> B M T')
-        a = self.conv_near(x)
-        b = self.conv_medium(x)
-        c = self.conv_far(x)
-        x = torch.cat([x, a, b, c], dim=1)
+        #x = ein.rearrange(x, 'B T M -> B M T')
+        #a = self.conv_near(x)
+        #b = self.conv_medium(x)
+        #c = self.conv_far(x)
+        #x = torch.cat([x, a, b, c], dim=1)
 
         # Condense local kernels
-        x = ein.rearrange(x, 'B M T -> B T M')
-        x = self.conv_agg(x)
+        #x = ein.rearrange(x, 'B M T -> B T M')
+        #x = self.conv_agg(x)
 
         # Long range temporal reasoning
         B, T, M = x.shape
@@ -88,6 +91,132 @@ class LRTAS(nn.Module):
         # Classifier of each frame
         x = self.classifier(x)
         return x
+
+class TSMLRTAS(nn.Module):
+    def __init__(self, **kwargs):
+        super().__init__()
+
+        self.model_dim = 64
+
+        self.norm = nn.LayerNorm(2048)
+        self.embed = nn.Linear(2048, self.model_dim)
+
+        self.temporal_layers = nn.ModuleList()
+        for _ in range(8):
+            self.temporal_layers.append(
+                LRULayer(self.model_dim, 64, 15, True, **kwargs)
+            )
+
+        # Final frame classifier
+        self.classifier = nn.Sequential(
+            nn.Linear(self.model_dim, 202),
+        )
+
+    def forward(self, x): # [B, T, D]
+
+        x = self.norm(x)
+        x = self.embed(x)
+        
+        for layer in self.temporal_layers:
+            x = layer(x)
+        
+        x = self.classifier(x)
+        return x
+
+class TSMTAS(lightning.LightningModule):
+    def __init__(self, learning_rate, weight_decay, scheduler_step, **kwargs):
+        super().__init__()
+
+        self.learning_rate = learning_rate
+        self.weight_decay = weight_decay
+        self.scheduler_step = scheduler_step
+        self.counter = 0
+
+        # Criterions
+        self.ce_plus_mse = CEplusMSE(num_classes=202, alpha=0.17)
+        self.edit = EditDistance(normalize=True)
+        self.mof = MeanOverFramesAccuracy()
+        self.f1 = F1Score(num_classes=202)
+
+        self.model = TSMLRTAS(**kwargs)
+
+    def training_step(self, batch, batch_idx):     # (B L S F)
+        samples, targets, _ = batch
+
+        results = self.model(samples) # B T C logits
+        results = ein.rearrange(results, "B T C -> B C T")
+        loss = self.ce_plus_mse(results, targets)
+
+        self.log('train/loss-ce+mse', loss["loss"], prog_bar=True)
+        self.log_dict({
+            "train/loss-mse": loss["loss_mse"],
+            "train/loss-ce": loss["loss_ce"],
+        }, prog_bar=False)
+
+        return loss['loss']
+    
+    def on_before_optimizer_step(self, optimizer):
+        # Compute the 2-norm for each layer
+        # If using mixed precision, the gradients are already unscaled here
+        from lightning.pytorch.utilities import grad_norm
+        norms = grad_norm(self.model, norm_type=2)
+        self.log_dict(norms)
+
+    def validation_step(self, batch, batch_idx):
+        samples, targets, metadata = batch
+
+        # Get network predictions
+        logits = self.model(samples)
+        probs = torch.softmax(logits, dim=2)
+        results = torch.argmax(probs, dim=2)
+
+        loss_mof = self.mof(results, targets)
+        loss_f1 = self.f1(results, targets)
+        loss_edit = self.edit(results, targets)
+        loss_dict = {
+            'val/F1@10': loss_f1['F1@10'],
+            'val/F1@25': loss_f1['F1@25'],
+            'val/F1@50': loss_f1['F1@50'],
+            'val/edit': loss_edit,
+            'val/mof': loss_mof,
+        }
+
+        self.log_dict(loss_dict, prog_bar=True, batch_size=samples.shape[0])
+        return loss_dict
+    
+    def predict_step(self, batch, batch_idx):
+        samples, targets, metadata = batch
+
+        logits = self.model(samples)
+        probs = torch.softmax(logits, dim=2)
+        results = torch.argmax(probs, dim=2)
+
+        # Save visualization
+        for i in range(results.shape[0]):
+            m = metadata[i]
+            t = targets[i]
+            r = results[i]
+
+            loss_mof = self.mof(results[None, :], targets[None, :])
+            loss_f1 = self.f1(results[None, :], targets[None, :])
+            loss_edit = self.edit(results[None, :], targets[None, :])
+
+            savepath = f"data/output/mof_{loss_mof}-f1@10_{loss_f1['F1@10']}-edit_{loss_edit}-{self.counter:010d}.png"
+            self.counter += 1
+
+            t = np.array(t.cpu())
+            r = np.array(r.cpu())
+            visualize(r, t, 202, savepath)
+
+
+    def configure_optimizers(self):
+        params = list(self.model.parameters())
+        #optimizer = torch.optim.AdamW(params, lr=self.learning_rate, weight_decay=self.weight_decay)
+        #optimizer = torch.optim.Adam(params, lr=self.learning_rate, weight_decay=self.weight_decay)
+        optimizer = torch.optim.SGD(params=params, lr=self.learning_rate, weight_decay=self.weight_decay)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=self.scheduler_step, gamma=0.1)
+        return {'optimizer': optimizer, 'lr_scheduler': scheduler}
+
 
 class TemporalActionSegmentation(lightning.LightningModule):
     def __init__(
@@ -112,7 +241,7 @@ class TemporalActionSegmentation(lightning.LightningModule):
 
         # Criterions
         self.ce_plus_mse = CEplusMSE(num_classes=25, alpha=0.17)
-        self.edit = EditDistance()
+        self.edit = EditDistance(normalize=True)
         self.mof = MeanOverFramesAccuracy()
         self.f1 = F1Score(num_classes=25)
 
@@ -168,41 +297,35 @@ class TemporalActionSegmentation(lightning.LightningModule):
 
         return loss_total
 
-    # Show temporal segmentation of a single sample
-        #    def visualize(self, x, output_file=None):
-        #        samples, targets = x
-        #
-        #        logits = self.model(samples)
-        #        probs = torch.softmax(logits, dim=2)
-        #        results = torch.argmax(probs, dim=2)
-        #
-        #        # Create one color for each action class
-        #        colors = []
-        #        for _ in range(25):
-        #            colors.append((random.random(), random.random(), random.random()))
-        #
-        #        frames = samples.shape[0]
-        #        with cairo.ImageSurface(cairo.FORMAT_ARGB32, frames, 100 + 100 + 20) as surface:
-        #            ctx = cairo.Context(surface)
-        #
-        #            for frame in range(frames):
-        #                pred, target = results[frame], targets[frame]
-        #
-        #                # ground truth
-        #                ctx.set_source_rgb(*colors[target])
-        #                ctx.move_to(float(frame), 0)
-        #                ctx.line_to(float(frame), 100)
-        #                ctx.stroke()
-        #
-        #                # result prediction
-        #                ctx.set_source_rgb(*colors[pred])
-        #                ctx.move_to(float(frame), 120)
-        #                ctx.line_to(float(frame), 220)
-        #                ctx.stroke()
-        #
-        #            if output_file is not None:
-        #                surface.write_to_png(output_file)
-        #
+    def forward(self, x):
+        return self.model(x)
+
+    def predict(self, dataset):
+
+        scores = []
+        for sample, targets in tqdm(dataset, total=len(dataset)):
+
+            # Get network predictions
+            logits = self.model(sample[None, ...])
+            probs = torch.softmax(logits, dim=2)
+            results = torch.argmax(probs, dim=2)
+
+            loss_mof = self.mof(results, targets[None, :, 1])
+            loss_f1 = self.f1(results, targets[None, :, 1])
+            loss_edit = self.edit(results, targets[None, :, 1])
+
+            t = np.array(targets[..., 1].cpu())
+            r = np.array(results[0].cpu())
+            scores.append({
+                'results': r,
+                'targets': t,
+                'mof': loss_mof,
+                'f1': loss_f1,
+                'edit': loss_edit
+            })
+
+        return scores
+        
 
     def configure_optimizers(self):
         params = list(self.model.parameters())
