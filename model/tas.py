@@ -161,10 +161,10 @@ class TSMTAS(lightning.LightningModule):
         samples, targets, _ = batch
 
         logits = self.model(samples) # B T C logits
+        metrics = self.metrics('train', logits, targets)
         logits = ein.rearrange(logits, "B T C -> B C T")
         loss = self.ce_plus_mse(logits, targets)
 
-        metrics = self.metrics('train', logits, targets)
         self.log_dict(metrics, prog_bar=True, batch_size=samples.shape[0])
         self.log('train/loss', loss['loss'], on_step=True, on_epoch=True, logger=True)
 
@@ -182,7 +182,6 @@ class TSMTAS(lightning.LightningModule):
 
         # Get network predictions
         logits = self.model(samples)
-
         metrics = self.metrics('val', logits, targets)
         self.log_dict(metrics, prog_bar=True, batch_size=samples.shape[0])
         
