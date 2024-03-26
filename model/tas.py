@@ -140,18 +140,34 @@ class TSMTAS(lightning.LightningModule):
 
         self.model = TSMLRTAS(**kwargs)
 
+    def metrics(self, stage, logits, targets):
+
+        probs = torch.softmax(logits, dim=2)
+        res = torch.argmax(probs, dim=2)
+
+        loss_mof = self.mof(res, targets)
+        loss_f1 = self.f1(res, targets)
+        loss_edit = self.edit(res, targets)
+
+        return {
+            f'{stage}/F1@10': loss_f1['F1@10'],
+            f'{stage}/F1@25': loss_f1['F1@25'],
+            f'{stage}/F1@50': loss_f1['F1@50'],
+            f'{stage}/edit': loss_edit,
+            f'{stage}/mof': loss_mof,
+        }
+
     def training_step(self, batch, batch_idx):     # (B L S F)
         samples, targets, _ = batch
 
-        results = self.model(samples) # B T C logits
-        results = ein.rearrange(results, "B T C -> B C T")
-        loss = self.ce_plus_mse(results, targets)
+        logits = self.model(samples) # B T C logits
+        logits = ein.rearrange(logits, "B T C -> B C T")
+        loss = self.ce_plus_mse(logits, targets)
 
-        self.log('train/loss', loss["loss"], prog_bar=True, on_step=False, on_epoch=True, batch_size=samples.shape[0])
-        #self.log_dict({
-        #    "train/loss-mse": loss["loss_mse"],
-        #    "train/loss-ce": loss["loss_ce"],
-        #}, prog_bar=False)
+        metrics = self.metrics('train', logits, targets)
+        self.log_dict(metrics, prog_bar=True, batch_size=samples.shape[0])
+        self.log('train/loss', loss['loss'], on_step=True, on_epoch=True, logger=True)
+
         return loss['loss']
     
     def on_before_optimizer_step(self, optimizer):
@@ -166,22 +182,11 @@ class TSMTAS(lightning.LightningModule):
 
         # Get network predictions
         logits = self.model(samples)
-        probs = torch.softmax(logits, dim=2)
-        results = torch.argmax(probs, dim=2)
 
-        loss_mof = self.mof(results, targets)
-        loss_f1 = self.f1(results, targets)
-        loss_edit = self.edit(results, targets)
-        loss_dict = {
-            'val/F1@10': loss_f1['F1@10'],
-            'val/F1@25': loss_f1['F1@25'],
-            'val/F1@50': loss_f1['F1@50'],
-            'val/edit': loss_edit,
-            'val/mof': loss_mof,
-        }
-
-        self.log_dict(loss_dict, prog_bar=True, on_step=False, on_epoch=True, batch_size=samples.shape[0])
-        return loss_dict
+        metrics = self.metrics('val', logits, targets)
+        self.log_dict(metrics, prog_bar=True, batch_size=samples.shape[0])
+        
+        return metrics
     
     def predict_step(self, batch, batch_idx):
         samples, targets, metadata = batch
