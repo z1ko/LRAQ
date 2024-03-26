@@ -102,9 +102,9 @@ class TSMLRTAS(nn.Module):
         self.embed = nn.Linear(2048, self.model_dim)
 
         self.temporal_layers = nn.ModuleList()
-        for _ in range(8):
+        for _ in range(5):
             self.temporal_layers.append(
-                LRULayer(self.model_dim, 64, 15, True, **kwargs)
+                LRULayer(self.model_dim, 128, 15, True, **kwargs)
             )
 
         # Final frame classifier
@@ -124,12 +124,12 @@ class TSMLRTAS(nn.Module):
         return x
 
 class TSMTAS(lightning.LightningModule):
-    def __init__(self, learning_rate, weight_decay, scheduler_step, **kwargs):
+    def __init__(self, learning_rate, **kwargs):
         super().__init__()
 
         self.learning_rate = learning_rate
-        self.weight_decay = weight_decay
-        self.scheduler_step = scheduler_step
+        #self.weight_decay = weight_decay
+        #self.scheduler_step = scheduler_step
         self.counter = 0
 
         # Criterions
@@ -147,12 +147,11 @@ class TSMTAS(lightning.LightningModule):
         results = ein.rearrange(results, "B T C -> B C T")
         loss = self.ce_plus_mse(results, targets)
 
-        self.log('train/loss-ce+mse', loss["loss"], prog_bar=True)
-        self.log_dict({
-            "train/loss-mse": loss["loss_mse"],
-            "train/loss-ce": loss["loss_ce"],
-        }, prog_bar=False)
-
+        self.log('train/loss', loss["loss"], prog_bar=True, on_step=False, on_epoch=True, batch_size=samples.shape[0])
+        #self.log_dict({
+        #    "train/loss-mse": loss["loss_mse"],
+        #    "train/loss-ce": loss["loss_ce"],
+        #}, prog_bar=False)
         return loss['loss']
     
     def on_before_optimizer_step(self, optimizer):
@@ -181,7 +180,7 @@ class TSMTAS(lightning.LightningModule):
             'val/mof': loss_mof,
         }
 
-        self.log_dict(loss_dict, prog_bar=True, batch_size=samples.shape[0])
+        self.log_dict(loss_dict, prog_bar=True, on_step=False, on_epoch=True, batch_size=samples.shape[0])
         return loss_dict
     
     def predict_step(self, batch, batch_idx):
@@ -213,9 +212,9 @@ class TSMTAS(lightning.LightningModule):
         params = list(self.model.parameters())
         #optimizer = torch.optim.AdamW(params, lr=self.learning_rate, weight_decay=self.weight_decay)
         #optimizer = torch.optim.Adam(params, lr=self.learning_rate, weight_decay=self.weight_decay)
-        optimizer = torch.optim.SGD(params=params, lr=self.learning_rate, weight_decay=self.weight_decay)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=self.scheduler_step, gamma=0.1)
-        return {'optimizer': optimizer, 'lr_scheduler': scheduler}
+        optimizer = torch.optim.SGD(params=params, lr=self.learning_rate)
+        #scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=self.scheduler_step, gamma=0.1)
+        return {'optimizer': optimizer } #'lr_scheduler': scheduler}
 
 
 class TemporalActionSegmentation(lightning.LightningModule):

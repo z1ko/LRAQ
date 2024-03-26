@@ -14,8 +14,8 @@ class LRU(nn.Module):
     def __init__(
         self,
         state_dim,                  # The state dimension is the same as the input dimension and output dimension
-        r_min=0.4,                  # Min. radius in the complex plane
-        r_max=0.9,                  # Max. radius in the complex plane
+        r_min=0.8,                  # Min. radius in the complex plane
+        r_max=0.99,                 # Max. radius in the complex plane
         phase_max=math.pi * 2,      # Phase in the form of [0, phase_max]
         **kwargs
     ):

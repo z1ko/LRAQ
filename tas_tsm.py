@@ -41,22 +41,19 @@ from model.tas import TSMTAS
 #    logger.log_hyperparams(opts)
 
 d = AssemblyTSMModule(
-    path_to_data='/media/z1ko/2TM2/datasets/Assembly101/', 
+    path_to_data='data/processed/assembly101',
     views=['C10095_rgb'],
-    batch_size=8, 
+    batch_size=10,
 )
 d.setup()
 
 model = TSMTAS(
-    learning_rate=0.000001,
-    weight_decay=1e5,
+    learning_rate=0.001,
     scheduler_step=30
 )
 
-
-
-#logger = WandbLogger(save_dir='runs/', name='TSMTAS')
-trainer = Trainer(max_epochs=10, gradient_clip_val=0.5)
+logger = WandbLogger(save_dir='runs/', name='TSMTAS')
+trainer = Trainer(logger=logger, max_epochs=100, gradient_clip_val=0.8)
 
 # Qualitative results
 #trainer.predict(model, d.val_dataloader())
