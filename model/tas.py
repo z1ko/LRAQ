@@ -97,31 +97,35 @@ class TSMLRTAS(nn.Module):
         super().__init__()
 
         self.model_dim = 64
+        self.stages = 5
 
         self.norm = nn.LayerNorm(2048)
         self.embed = nn.Linear(2048, self.model_dim)
 
         self.temporal_layers = nn.ModuleList()
-        for _ in range(5):
+        for _ in range(self.stages):
             self.temporal_layers.append(
                 LRULayer(self.model_dim, 128, 15, True, **kwargs)
             )
 
-        # Final frame classifier
-        self.classifier = nn.Sequential(
-            nn.Linear(self.model_dim, 202),
-        )
+        self.classifiers = nn.ModuleList()
+        for _ in range(self.stages):
+            self.classifiers.append(
+                nn.Linear(self.model_dim, 202)
+            )
 
     def forward(self, x): # [B, T, D]
+        B, T, D = x.shape
 
         x = self.norm(x)
         x = self.embed(x)
         
-        for layer in self.temporal_layers:
+        stages = torch.zeros((len(self.temporal_layers), B, T, 202)).cuda()
+        for s, layer in enumerate(self.temporal_layers):
             x = layer(x)
-        
-        x = self.classifier(x)
-        return x
+            stages[s] = self.classifiers[s](x) # Save classification of stage
+
+        return stages
 
 class TSMTAS(lightning.LightningModule):
     def __init__(self, learning_rate, **kwargs):
@@ -161,8 +165,8 @@ class TSMTAS(lightning.LightningModule):
         samples, targets, _ = batch
 
         logits = self.model(samples) # B T C logits
-        metrics = self.metrics('train', logits, targets)
-        logits = ein.rearrange(logits, "B T C -> B C T")
+        metrics = self.metrics('train', logits[-1], targets)
+        logits = ein.rearrange(logits, "N B T C -> N B C T")
         loss = self.ce_plus_mse(logits, targets)
 
         self.log_dict(metrics, prog_bar=True, batch_size=samples.shape[0])
@@ -182,7 +186,7 @@ class TSMTAS(lightning.LightningModule):
 
         # Get network predictions
         logits = self.model(samples)
-        metrics = self.metrics('val', logits, targets)
+        metrics = self.metrics('val', logits[-1], targets)
         self.log_dict(metrics, prog_bar=True, batch_size=samples.shape[0])
         
         return metrics

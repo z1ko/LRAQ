@@ -41,23 +41,23 @@ class CEplusMSE(nn.Module):
 
     def forward(self, logits: torch.Tensor, targets: torch.Tensor):
         """
-        :param logits: [batch_size, classes, seq_len]
+        :param logits: [stages, batch_size, classes, seq_len]
         :param targets: [batch_size, seq_len]
         """
 
         loss_dict = { 'loss': 0.0, 'loss_ce': 0.0, 'loss_mse': 0.0 }
+        for stage in logits:
+            # Frame level classification
+            loss_dict['loss_ce'] += self.ce(
+                ein.rearrange(stage, "batch_size classes seq_len -> (batch_size seq_len) classes"),
+                ein.rearrange(targets, "batch_size seq_len -> (batch_size seq_len)")
+            )
 
-        # Frame level classification
-        loss_dict['loss_ce'] = self.ce(
-            ein.rearrange(logits, "batch_size classes seq_len -> (batch_size seq_len) classes"),
-            ein.rearrange(targets, "batch_size seq_len -> (batch_size seq_len)")
-        )
-
-        # Neighbour frames should have similar values
-        loss_dict['loss_mse'] = torch.mean(torch.clamp(self.mse(
-            F.log_softmax(logits[:, :, 1:], dim=1),
-            F.log_softmax(logits.detach()[:, :, :-1], dim=1)
-        ), min=0.0, max=16.0))
+            # Neighbour frames should have similar values
+            loss_dict['loss_mse'] += torch.mean(torch.clamp(self.mse(
+                F.log_softmax(stage[:, :, 1:], dim=1),
+                F.log_softmax(stage.detach()[:, :, :-1], dim=1)
+            ), min=0.0, max=16.0))
 
         loss_dict['loss'] = loss_dict['loss_ce'] + self.alpha * loss_dict['loss_mse']
         return loss_dict
