@@ -105,7 +105,7 @@ class TSMLRTAS(nn.Module):
         self.temporal_layers = nn.ModuleList()
         for _ in range(self.stages):
             self.temporal_layers.append(
-                LRULayer(self.model_dim, 128, 15, True, **kwargs)
+                LRULayer(self.model_dim, 128, 31, True, **kwargs)
             )
 
         self.classifiers = nn.ModuleList()
@@ -128,16 +128,16 @@ class TSMLRTAS(nn.Module):
         return stages
 
 class TSMTAS(lightning.LightningModule):
-    def __init__(self, learning_rate, **kwargs):
+    def __init__(self, learning_rate, scheduler_step, **kwargs):
         super().__init__()
 
         self.learning_rate = learning_rate
         #self.weight_decay = weight_decay
-        #self.scheduler_step = scheduler_step
+        self.scheduler_step = scheduler_step
         self.counter = 0
 
         # Criterions
-        self.ce_plus_mse = CEplusMSE(num_classes=202, alpha=0.17)
+        self.ce_plus_mse = CEplusMSE(num_classes=202, alpha=0.80)
         self.edit = EditDistance(normalize=True)
         self.mof = MeanOverFramesAccuracy()
         self.f1 = F1Score(num_classes=202)
@@ -169,9 +169,8 @@ class TSMTAS(lightning.LightningModule):
         logits = ein.rearrange(logits, "N B T C -> N B C T")
         loss = self.ce_plus_mse(logits, targets)
 
-        self.log_dict(metrics, prog_bar=True, batch_size=samples.shape[0])
-        self.log('train/loss', loss['loss'], on_step=True, on_epoch=True, logger=True)
-
+        self.log_dict(metrics, prog_bar=False, on_step=False, on_epoch=True, batch_size=samples.shape[0])
+        self.log('train/loss', loss['loss'], prog_bar=True, on_step=False, on_epoch=True, batch_size=samples.shape[0])
         return loss['loss']
     
     def on_before_optimizer_step(self, optimizer):
@@ -187,8 +186,7 @@ class TSMTAS(lightning.LightningModule):
         # Get network predictions
         logits = self.model(samples)
         metrics = self.metrics('val', logits[-1], targets)
-        self.log_dict(metrics, prog_bar=True, batch_size=samples.shape[0])
-        
+        self.log_dict(metrics, prog_bar=False, on_step=False, on_epoch=True, batch_size=samples.shape[0])
         return metrics
     
     def predict_step(self, batch, batch_idx):
@@ -221,8 +219,8 @@ class TSMTAS(lightning.LightningModule):
         #optimizer = torch.optim.AdamW(params, lr=self.learning_rate, weight_decay=self.weight_decay)
         #optimizer = torch.optim.Adam(params, lr=self.learning_rate, weight_decay=self.weight_decay)
         optimizer = torch.optim.SGD(params=params, lr=self.learning_rate)
-        #scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=self.scheduler_step, gamma=0.1)
-        return {'optimizer': optimizer } #'lr_scheduler': scheduler}
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=self.scheduler_step, gamma=0.1)
+        return {'optimizer': optimizer, 'lr_scheduler': scheduler}
 
 
 class TemporalActionSegmentation(lightning.LightningModule):

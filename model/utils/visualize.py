@@ -1,9 +1,9 @@
 import numpy as np
-import cairo
 import random
 
 # Show temporal segmentation of a single sample
 def visualize(prediction, target, num_classes, output_file=None):
+    import cairo
 
     # Create one color for each action class
     colors = []

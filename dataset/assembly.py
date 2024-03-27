@@ -101,7 +101,7 @@ class Assembly101TSMDataset(torch.utils.data.Dataset):
         mode,
         path_to_data,
         views=VIEWS,
-        max_frames=5000
+        max_frames=10000
     ):
         super().__init__()
         assert mode in ['train', 'val']

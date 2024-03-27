@@ -4,6 +4,7 @@ import numpy as np
 
 from lightning.pytorch import Trainer
 #from lightning.pytorch.utilities.model_summary import ModelSummary
+from lightning.pytorch.callbacks import LearningRateMonitor
 from lightning.pytorch.loggers import WandbLogger
 
 #from model.utils.args import base_arg_parser
@@ -41,7 +42,7 @@ from model.tas import TSMTAS
 #    logger.log_hyperparams(opts)
 
 d = AssemblyTSMModule(
-    path_to_data='/media/z1ko/2TM2/datasets/Assembly101',
+    path_to_data='data/processed/assembly101',
     views=['C10095_rgb'],
     batch_size=10,
 )
@@ -49,11 +50,18 @@ d.setup()
 
 model = TSMTAS(
     learning_rate=0.001,
-    scheduler_step=30
+    scheduler_step=100
 )
 
 logger = WandbLogger(save_dir='runs/', name='TSMTAS')
-trainer = Trainer(logger=logger, max_epochs=100, gradient_clip_val=0.8)
+lr_monitor = LearningRateMonitor(logging_interval='epoch')
+
+trainer = Trainer(
+    logger=logger,
+    max_epochs=100,
+    gradient_clip_val=0.8,
+    callbacks=[lr_monitor]
+)
 
 # Qualitative results
 #trainer.predict(model, d.val_dataloader())
