@@ -123,6 +123,7 @@ class LRULayer(nn.Module):
         state_dim,
         temporal_k_size,
         use_temporal_conv,
+        dropout=0.20,
         **kwargs
     ):
         super().__init__()
@@ -131,6 +132,7 @@ class LRULayer(nn.Module):
         self.norm = nn.LayerNorm(model_dim)
         self.proj_initial = nn.Linear(model_dim, state_dim * 2, bias=False)
         self.activation = nn.GELU()
+        self.dropout = nn.Dropout(dropout)
         
         self.conv = nn.Conv1d(state_dim, state_dim, kernel_size=temporal_k_size, padding='same')
         #self.conv = CausalConv1d(state_dim, state_dim, kernel_size=temporal_k_size, dilation=2)
@@ -152,6 +154,7 @@ class LRULayer(nn.Module):
 
         v = self.temporal(v)
         x = self.activation(x)
+        x = self.dropout(x)
         x = x * v
 
         y = self.proj_final(x)

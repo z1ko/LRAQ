@@ -3,6 +3,7 @@ import torch.nn as nn
 import einops as ein
 import numpy as np
 import lightning
+import math
 
 from tqdm import tqdm
 
@@ -93,39 +94,43 @@ class LRTAS(nn.Module):
         return x
 
 class TSMLRTAS(nn.Module):
-    def __init__(self, **kwargs):
+    def __init__(self, dropout=0.20, **kwargs):
         super().__init__()
 
         self.model_dim = 64
-        self.stages = 5
+        self.stages = 20
 
         self.norm = nn.LayerNorm(2048)
         self.embed = nn.Linear(2048, self.model_dim)
+        self.dropout = nn.Dropout(dropout)
 
         self.temporal_layers = nn.ModuleList()
         for _ in range(self.stages):
             self.temporal_layers.append(
-                LRULayer(self.model_dim, 128, 31, True, **kwargs)
+                LRULayer(self.model_dim, 128, 0, None, dropout, phase_max=math.pi/50, **kwargs)
             )
 
-        self.classifiers = nn.ModuleList()
-        for _ in range(self.stages):
-            self.classifiers.append(
-                nn.Linear(self.model_dim, 202)
-            )
+        self.classifier = nn.Linear(self.model_dim, 202)
+        #self.classifiers = nn.ModuleList()
+        #for _ in range(self.stages):
+        #    self.classifiers.append(
+        #        nn.Linear(self.model_dim, 202)
+        #    )
 
     def forward(self, x): # [B, T, D]
         B, T, D = x.shape
 
         x = self.norm(x)
+        x = self.dropout(x)
         x = self.embed(x)
         
-        stages = torch.zeros((len(self.temporal_layers), B, T, 202)).cuda()
+        #stages = torch.zeros((len(self.temporal_layers), B, T, 202)).cuda()
         for s, layer in enumerate(self.temporal_layers):
             x = layer(x)
-            stages[s] = self.classifiers[s](x) # Save classification of stage
+            #stages[s] = self.classifiers[s](x) # Save classification of stage
 
-        return stages
+        #return stages
+        return self.classifier(x)[None, ...]
 
 class TSMTAS(lightning.LightningModule):
     def __init__(self, learning_rate, scheduler_step, **kwargs):
@@ -137,12 +142,12 @@ class TSMTAS(lightning.LightningModule):
         self.counter = 0
 
         # Criterions
-        self.ce_plus_mse = CEplusMSE(num_classes=202, alpha=0.80)
+        self.ce_plus_mse = CEplusMSE(num_classes=202, alpha=0.20)
         self.edit = EditDistance(normalize=True)
         self.mof = MeanOverFramesAccuracy()
         self.f1 = F1Score(num_classes=202)
 
-        self.model = TSMLRTAS(**kwargs)
+        self.model = TSMLRTAS(dropout=0.5, **kwargs)
 
     def metrics(self, stage, logits, targets):
 
@@ -175,10 +180,10 @@ class TSMTAS(lightning.LightningModule):
     
     def on_before_optimizer_step(self, optimizer):
         # Compute the 2-norm for each layer
-        # If using mixed precision, the gradients are already unscaled here
-        from lightning.pytorch.utilities import grad_norm
-        norms = grad_norm(self.model, norm_type=2)
-        self.log_dict(norms)
+        #from lightning.pytorch.utilities import grad_norm
+        #norms = grad_norm(self.model, norm_type=2)
+        #self.log_dict(norms)
+        pass
 
     def validation_step(self, batch, batch_idx):
         samples, targets, metadata = batch
@@ -186,7 +191,11 @@ class TSMTAS(lightning.LightningModule):
         # Get network predictions
         logits = self.model(samples)
         metrics = self.metrics('val', logits[-1], targets)
+        logits = ein.rearrange(logits, "N B T C -> N B C T")
+        loss = self.ce_plus_mse(logits, targets)
+
         self.log_dict(metrics, prog_bar=False, on_step=False, on_epoch=True, batch_size=samples.shape[0])
+        self.log('val/loss', loss['loss'], prog_bar=True, on_step=False, on_epoch=True, batch_size=samples.shape[0])
         return metrics
     
     def predict_step(self, batch, batch_idx):
@@ -219,7 +228,7 @@ class TSMTAS(lightning.LightningModule):
         #optimizer = torch.optim.AdamW(params, lr=self.learning_rate, weight_decay=self.weight_decay)
         #optimizer = torch.optim.Adam(params, lr=self.learning_rate, weight_decay=self.weight_decay)
         optimizer = torch.optim.SGD(params=params, lr=self.learning_rate)
-        scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=self.scheduler_step, gamma=0.1)
+        scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=self.scheduler_step, gamma=0.5)
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}
 
 

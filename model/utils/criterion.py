@@ -85,15 +85,15 @@ class F1Score:
         self.overlaps = overlaps
         self.classes = num_classes
 
-        self.tp = np.zeros((len(overlaps), num_classes))
-        self.fp = np.zeros((len(overlaps), num_classes))
-        self.fn = np.zeros((len(overlaps), num_classes))
-
     def __call__(self, predictions, targets) -> float:
         """
         :param predictions: [batch_size, seq_len]
         :param targets: [batch_size, seq_len]
         """
+
+        #self.tps = np.zeros((len(self.overlaps), self.classes))
+        #self.fps = np.zeros((len(self.overlaps), self.classes))
+        #self.fns = np.zeros((len(self.overlaps), self.classes))
 
         result = {}
         for o in self.overlaps:
@@ -115,9 +115,9 @@ class F1Score:
                     overlap
                 )
                 
-                self.tp[i] += tp
-                self.fp[i] += fp
-                self.fn[i] += fn
+                #self.tps[i] += tp
+                #self.fps[i] += fp
+                #self.fns[i] += fn
 
                 f1 = self.get_f1_score(tp, fp, fn)
                 result[f'F1@{int(overlap*100)}'] += f1
