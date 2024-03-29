@@ -59,8 +59,8 @@ checkpoint = ModelCheckpoint(
     filename='checkpoints',
     save_top_k=1,
     verbose=True,
-    monitor='val/loss',
-    mode='min'
+    monitor='val/mof',
+    mode='max'
 )
 
 trainer = Trainer(

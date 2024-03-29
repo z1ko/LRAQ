@@ -137,7 +137,7 @@ class TSMTAS(lightning.LightningModule):
         super().__init__()
 
         self.learning_rate = learning_rate
-        #self.weight_decay = weight_decay
+        self.weight_decay = 1e-5
         self.scheduler_step = scheduler_step
         self.counter = 0
 
@@ -225,9 +225,7 @@ class TSMTAS(lightning.LightningModule):
 
     def configure_optimizers(self):
         params = list(self.model.parameters())
-        #optimizer = torch.optim.AdamW(params, lr=self.learning_rate, weight_decay=self.weight_decay)
-        #optimizer = torch.optim.Adam(params, lr=self.learning_rate, weight_decay=self.weight_decay)
-        optimizer = torch.optim.SGD(params=params, lr=self.learning_rate)
+        optimizer = torch.optim.SGD(params=params, lr=self.learning_rate, weight_decay=self.weight_decay)
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optimizer, step_size=self.scheduler_step, gamma=0.5)
         return {'optimizer': optimizer, 'lr_scheduler': scheduler}
 
