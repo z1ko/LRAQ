@@ -159,3 +159,89 @@ class LRULayer(nn.Module):
 
         y = self.proj_final(x)
         return y + r
+
+class GLU(nn.Module):
+    """Gated Linear Units used in the S4 paper
+    """
+    def __init__(
+        self,
+        features,
+        dropout=0.0
+    ):
+        super().__init__()
+
+        self.activation = nn.GELU()
+        self.dropout = nn.Dropout(p=dropout)
+        self.output_linear = nn.Sequential(
+            nn.Linear(features, 2 * features),
+            nn.GLU(dim=-1)
+        )
+
+    def forward(self, x):
+        x = self.dropout(self.activation(x))
+        x = self.output_linear(x)
+        return x
+
+class LRUBlock(nn.Module):
+    """LRU block with gated linear unit as channel mixer, dropout and normalization
+    """
+    def __init__(
+        self,
+        input_dim,
+        output_dim,
+        state_dim,
+        layers_count,
+        dropout=0.0,
+        **kwargs
+    ):
+        super().__init__()
+        self.inference = False
+
+        self.input_dim = input_dim
+        self.output_dim = output_dim
+        self.state_dim = state_dim
+        self.layers_count = layers_count
+        self.dropout = dropout
+
+        self.input_proj = nn.Linear(self.input_dim, self.state_dim)
+        self.output_proj = nn.Linear(self.state_dim, self.output_dim)
+
+        # Create all layers
+        self.layers = nn.ModuleList()
+        for _ in range(self.layers_count):
+            self.layers.append(
+                nn.Sequential(
+                    nn.LayerNorm(self.state_dim),
+                    LRU(self.state_dim, **kwargs),
+                    GLU(self.state_dim, self.dropout)
+                )
+            )
+
+    def initialize_inference(self):
+        self.inference = True
+        for layer in self.layers:
+            layer[1].initialize_inference()
+
+    def forward(self, x):
+        x = self.input_proj(x)
+
+        for layer in self.layers:
+            residual = x
+            x = layer(x) + residual
+
+        x = self.output_proj(x)
+        return x
+
+
+    def forward_with_state(self, x, state):
+        assert(self.inference)
+
+        x = self.input_proj(x)
+        
+        for layer in self.layers:
+            residual = x
+            x, state = layer.forward_with_state(x, state)
+            x = x + residual
+
+        x = self.output_proj(x)
+        return x, state

@@ -28,10 +28,11 @@ class AssemblyDataset(torch.utils.data.Dataset):
         self,
         data_dir,
         split,
-        window_size,
+        max_frames=20000,
         transform=[]
     ):
         super().__init__()
+        self.max_frames = max_frames
 
         self.samples = []
         self.labels = []
@@ -45,17 +46,20 @@ class AssemblyDataset(torch.utils.data.Dataset):
             data = sample['data']
             labels = sample['labels']
 
-            if data.shape[1] < window_size:
-                print(f'warning: sample {file} too small ({data.shape[1]}<{window_size})')
-                continue
+            #if data.shape[1] < window_size:
+            #    print(f'warning: sample {file} too small ({data.shape[1]}<{window_size})')
+            #    continue
 
             # Merge the hands features, they can interact spatially
             data = ein.rearrange(data, 'H T J D -> T (H J) D')
 
+            self.samples.append(torch.tensor(data)[:self.max_frames, ...])
+            self.labels.append(torch.tensor(labels)[:self.max_frames, 1].long())
+
             # Sliding windows
-            for beg in range(0, data.shape[0] - window_size, window_size):
-                self.samples.append(torch.tensor(data[beg:beg+window_size, ...], dtype=torch.float32))
-                self.labels.append(torch.tensor(labels[beg:beg+window_size, :], dtype=torch.int64))
+            #for beg in range(0, data.shape[0] - window_size, window_size):
+            #    self.samples.append(torch.tensor(data[beg:beg+window_size, ...], dtype=torch.float32))
+            #    self.labels.append(torch.tensor(labels[beg:beg+window_size, :], dtype=torch.int64))
             
     def __getitem__(self, idx):
         return self.samples[idx], self.labels[idx]
@@ -75,11 +79,24 @@ class AssemblyDataModule(lightning.LightningDataModule):
         self.training = AssemblyDataset(self.data_dir, 'train', **self.kwargs)
         self.validation = AssemblyDataset(self.data_dir, 'validation', **self.kwargs)
 
+    @staticmethod
+    def collate(data):
+        features = []
+        targets = []
+        for sample, label in data:
+            features.append(sample)
+            targets.append(label)
+
+        features = torch.nn.utils.rnn.pad_sequence(features, batch_first=True)
+        targets = torch.nn.utils.rnn.pad_sequence(targets, batch_first=True, padding_value=-100)
+        return features, targets
+
     def train_dataloader(self):
         return torch.utils.data.DataLoader(
             self.training,
             self.batch_size,
-            drop_last=True,
+            collate_fn=AssemblyDataModule.collate,
+            pin_memory=True,
             shuffle=True
         )
 
@@ -87,6 +104,8 @@ class AssemblyDataModule(lightning.LightningDataModule):
         return torch.utils.data.DataLoader(
             self.validation,
             self.batch_size,
+            collate_fn=AssemblyDataModule.collate,
+            pin_memory=True,
         )
 
 VIEWS = [
@@ -94,6 +113,230 @@ VIEWS = [
     'HMC_21176875_mono10bit', 'HMC_84346135_mono10bit', 'HMC_21176623_mono10bit', 'HMC_84347414_mono10bit',
     'HMC_21110305_mono10bit', 'HMC_84355350_mono10bit','HMC_21179183_mono10bit', 'HMC_84358933_mono10bit'
 ]
+
+class Assembly101PosesDataset(torch.utils.data.Dataset):
+    def __init__(
+        self,
+        path_to_data,
+        mode,
+        target='verb',
+        max_frames=20000
+    ):
+        super().__init__()
+        assert mode in ['train', 'val']
+        assert target in ['action', 'verb', 'noun']
+
+        self.mode = mode
+        self.path_to_data = path_to_data
+        self.max_frames = max_frames
+        self.target = target
+        self.classes = 0
+
+        actions_path = os.path.join(self.path_to_data, 'coarse-annotations', 'actions.csv')
+        self.actions = pd.read_csv(actions_path)
+        self.data = self.make_database()
+
+    def make_database(self):
+        annotations_path = os.path.join(self.path_to_data, 'coarse-annotations')
+        data_path = os.path.join(self.path_to_data, f'{self.mode}.csv')
+        data_df = pd.read_csv(data_path)
+
+        keyframes_dir = os.path.join(self.path_to_data, 'poses', self.mode)
+        segm_dir = os.path.join(annotations_path, 'coarse_labels')
+
+        self.keys = set()
+
+        # Dataset is divided between assembly and disassembly, we merge them
+        poses_data = {}
+        for _, entry in tqdm(data_df.iterrows(), total=len(data_df)):
+            sample = entry.to_dict()
+
+            # Load only a single view, it doesnt matter in the context of poses
+            if sample['view'] != 'C10095_rgb':
+                continue
+
+            # Sample already loaded
+            video_id = sample['video_id']
+            if video_id in poses_data:
+                continue
+
+            # Check if sample exists
+            keyframes_path = os.path.join(keyframes_dir, f"{sample['video_id']}.pkl")
+            if not os.path.exists(keyframes_path):
+                continue
+
+            # Load keyframes
+            with open(keyframes_path, "rb") as f:
+                keyframes = pickle.load(f)
+
+            keyframes = keyframes['data']
+            keyframes = ein.rearrange(keyframes, 'H T J D -> T (H J) D')
+
+            # Assembly segmentation
+            try:
+                segm_ass, segm_ass_start, segm_ass_end = self.load_segmentation(
+                    os.path.join(segm_dir, f"assembly_{sample['video_id']}.txt"),
+                    self.actions, 
+                    target=self.target
+                )
+            except:
+                continue
+
+            assembly = {
+                'segm': segm_ass,
+                'segm_start': segm_ass_start,
+                'segm_end': segm_ass_end
+            }
+
+            # Disassembly segmentation
+            try:
+                segm_dis, segm_dis_start, segm_dis_end = self.load_segmentation(
+                    os.path.join(segm_dir, f"disassembly_{sample['video_id']}.txt"),
+                    self.actions, 
+                    target=self.target
+                )
+            except:
+                continue
+
+            disassembly = {
+                'segm': segm_dis,
+                'segm_start': segm_dis_start,
+                'segm_end': segm_dis_end
+            }
+
+            self.keys.add(video_id)
+            poses_data[video_id] = {
+                'keyframes': keyframes,
+                'assembly': assembly, 
+                'disassembly': disassembly
+            }
+
+        # Merge assembly and disassembly
+        poses_items = []
+        for key, item in poses_data.items():
+
+            ass_beg = item['assembly']['segm_start']
+            ass_end = item['assembly']['segm_end']
+            dis_beg = item['disassembly']['segm_start']
+            dis_end = item['disassembly']['segm_end']
+
+            self.classes = max(self.classes, max(
+                np.max(item['assembly']['segm']),
+                np.max(item['disassembly']['segm']),
+            ))
+
+            segmentation = np.concatenate([item['assembly']['segm'], item['disassembly']['segm']])
+            keyframes = np.concatenate([
+                item['keyframes'][ass_beg:ass_end],
+                item['keyframes'][dis_beg:dis_end],
+            ])
+
+            # Skip data with inconsistency
+            if len(segmentation) != len(keyframes):
+                continue
+
+            poses_items.append({
+                'video_id': key,
+                'segm': segmentation,
+                'keyframes': keyframes
+            })
+
+
+        print(f'elements={len(poses_items)}, classes={self.classes + 1}')
+        return poses_items
+    
+    def load_segmentation(self, segm_path, actions, target='action'):
+        labels = []
+        start_indices = []
+        end_indices = []
+
+        with open(segm_path, 'r') as f:
+            lines = list(map(lambda s: s.split("\n"), f.readlines()))
+            for line in lines:
+                start, end, lbl = line[0].split("\t")[:-1]
+                
+                # Make annotation 60 FPS from 30 FPS
+                start = int(start) * 2
+                end = int(end) * 2
+                
+                start_indices.append(start)
+                end_indices.append(end)
+                action_id = actions.loc[actions[f'action_cls'] == lbl, f'{target}_id']
+                segm_len = end - start
+                labels.append(np.full(segm_len, fill_value=action_id.item()))
+
+        segmentation = np.concatenate(labels)
+        num_frames = segmentation.shape[0]
+
+        # start and end frame idx @30fps
+        start_frame = min(start_indices)
+        end_frame = max(end_indices)
+        assert num_frames == (end_frame-start_frame), \
+            "Length of Segmentation doesn't match with clip length."
+
+        return segmentation, start_frame, end_frame
+
+    def __getitem__(self, idx):
+        sample = {}
+        data_dict = self.data[idx]
+        sample['video_id'] = data_dict['video_id']
+
+        features = torch.tensor(data_dict['keyframes'])
+        sample['features'] = features[:min(features.shape[0], self.max_frames)]
+
+        targets = torch.tensor(data_dict['segm']).long()
+        sample['targets'] = targets[:min(targets.shape[0], self.max_frames)]
+
+        return sample
+
+    def __len__(self):
+        return len(self.data)
+
+class Assembly101PosesDataModule(lightning.LightningDataModule):
+    def __init__(
+        self,
+        path_to_data,
+        batch_size,
+        target
+    ):
+        super().__init__()
+        self.path_to_data = path_to_data
+        self.batch_size = batch_size
+        self.target = target
+
+    def setup(self, task=''):
+        self.training = Assembly101PosesDataset(self.path_to_data, mode='train', target=self.target)
+        self.validation = Assembly101PosesDataset(self.path_to_data, mode='val', target=self.target)
+        z = self.training.keys.intersection(self.validation.keys)
+        assert(len(z) == 0)
+
+    @staticmethod
+    def collate(data):
+        features, targets = [], []
+        for sample in data:
+            features.append(sample['features'])
+            targets.append(sample['targets'])
+
+        features = torch.nn.utils.rnn.pad_sequence(features, batch_first=True)
+        targets = torch.nn.utils.rnn.pad_sequence(targets, batch_first=True, padding_value=-100)
+        return features, targets
+
+    def train_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.training,
+            self.batch_size,
+            collate_fn=Assembly101PosesDataModule.collate,
+            pin_memory=True,
+            shuffle=True
+        )
+
+    def val_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.validation,
+            self.batch_size,
+            collate_fn = Assembly101PosesDataModule.collate,
+            pin_memory=True,
+        )
 
 class Assembly101TSMDataset(torch.utils.data.Dataset):
     def __init__(
@@ -439,7 +682,7 @@ def gather_annotations(annotations, json_list_poses):
 
     return result
 
-def main_poses(args):
+def main_poses_fine(args):
 
     json_list_poses = os.listdir(args.poses)
     json_list_poses.sort()
@@ -511,7 +754,7 @@ if __name__ == '__main__':
     args = args.parse_args()
 
     if not args.test:
-        main_poses(args)
+        main_poses_fine(args)
     else:
         actions_dict, labels_dict = load_action_dictionary('/media/z1ko/2TM2/datasets/Assembly101/coarse-annotations/actions.csv')
         num_classes = len(actions_dict)

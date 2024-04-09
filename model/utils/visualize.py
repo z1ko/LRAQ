@@ -1,15 +1,59 @@
 import numpy as np
+import matplotlib.pyplot as plt
 import random
+
+def surface_to_np(surface):
+    """ Transforms a Cairo surface into a numpy array. """
+    im = +np.frombuffer(surface.get_data(), np.uint8)
+    H,W = surface.get_height(), surface.get_width()
+    im.shape = (H,W, 4) # for RGBA
+    return im[:,:,:3]
+
+def generate_n_colors(n, seed=6969):
+    colors = []
+    random.seed(seed)
+    for _ in range(n):
+        colors.append((random.random(), random.random(), random.random()))
+    return colors
+
+def show_segm(segmentation, num_classes):
+    import cairo
+
+    # Create one color for each action class
+    colors = generate_n_colors(num_classes)
+
+    frames = min(len(segmentation), 20000)
+    with cairo.ImageSurface(cairo.FORMAT_ARGB32, frames, 100) as surface:
+        ctx = cairo.Context(surface)
+
+        # Background
+        ctx.set_source_rgb(1.0, 1.0, 1.0)
+        ctx.rectangle(0.0, 100.0, float(frames), 100.0)
+        ctx.fill()
+
+        for i, seg in enumerate(segmentation):
+            seg = seg.item()
+            if seg == -100:
+                continue
+
+            r, g, b = colors[seg]
+            ctx.set_source_rgb(r, g, b)
+            ctx.move_to(float(i), 0.0)
+            ctx.line_to(float(i), 100.0)
+            ctx.stroke()
+
+        # Visualize using plot
+        data = surface_to_np(surface)
+        plt.imshow(data)
+            
+
 
 # Show temporal segmentation of a single sample
 def visualize(prediction, target, num_classes, output_file=None):
     import cairo
 
     # Create one color for each action class
-    colors = []
-    random.seed(6969)
-    for _ in range(num_classes):
-        colors.append((random.random(), random.random(), random.random()))
+    colors = generate_n_colors(num_classes)
 
     frames = len(prediction)
     with cairo.ImageSurface(cairo.FORMAT_ARGB32, frames, 100 + 100 + 20) as surface:
@@ -54,6 +98,9 @@ def visualize(prediction, target, num_classes, output_file=None):
 
         if output_file is not None:
             surface.write_to_png(output_file)
+        else:
+            data = surface_to_np(surface)
+            plt.imshow(data)
 
 # =================================================================
 # TEST

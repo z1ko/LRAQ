@@ -42,7 +42,7 @@ from model.tas import TSMTAS
 #    logger.log_hyperparams(opts)
 
 d = AssemblyTSMModule(
-    path_to_data='data/processed/assembly101',
+    path_to_data='/media/z1ko/2TM2/datasets/Assembly101',
     views=['C10095_rgb'],
     batch_size=8,
 )

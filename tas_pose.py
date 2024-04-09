@@ -3,37 +3,49 @@ import pickle
 from lightning.pytorch import Trainer
 from lightning.pytorch.loggers import WandbLogger
 
-from dataset.assembly import AssemblyDataModule
-from model.tas import TemporalActionSegmentation
-from model.utils.visualize import visualize
+from dataset.assembly import Assembly101PosesDataModule,AssemblyDataModule
+from model.poses import TemporalActionSegmentation
+from model.utils.visualize import show_segm
 
-d = AssemblyDataModule(
-    'data/processed/assembly', 
-    batch_size=6,
-    window_size=2000
-)
+d = Assembly101PosesDataModule(
+    '/media/z1ko/2TM2/datasets/Assembly101',
+    target='action', 
+    batch_size=1
+) 
 d.setup()
 
+#d = AssemblyDataModule(
+#    'data/processed/assembly', 
+#    batch_size=1,
+#)
+#d.setup()
+
 model = TemporalActionSegmentation(
-    model_dim=64,
-    learning_rate=0.0001,
+    model_dim=128,
+    learning_rate=0.1,
     weight_decay=0.0005,
-    scheduler_step=30,
+    scheduler_step=50,
     joint_count=2*21,
     joint_features=3,
-    temporal_state_dim=128,
-    spatial_state_dim=32,
-    temporal_layers=8,
-    spatial_layers=2
+    temporal_state_dim=256,
+    spatial_state_dim=64,
+    temporal_layers=4,
+    spatial_layers=2,
+    classes=202
 )
 
-logger = WandbLogger(save_dir='runs/', name='LRGA_TAS_POSE')
-trainer = Trainer(max_epochs=20, logger=logger)
+logger = WandbLogger(save_dir='runs/', name='LORAS[pose,fine]')
+trainer = Trainer(
+    logger=logger,
+    max_epochs=150,
+    gradient_clip_val=300.0,
+    accumulate_grad_batches=16,
+)
 
 trainer.fit(
     model, 
     train_dataloaders=d.train_dataloader(), 
-    val_dataloaders=d.val_dataloader()
+    val_dataloaders=d.val_dataloader(),
 )
 
 scores = model.predict(d.validation)
