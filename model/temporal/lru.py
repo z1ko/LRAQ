@@ -14,7 +14,7 @@ class LRU(nn.Module):
     def __init__(
         self,
         state_dim,                  # The state dimension is the same as the input dimension and output dimension
-        r_min=0.8,                  # Min. radius in the complex plane
+        r_min=0.7,                  # Min. radius in the complex plane
         r_max=0.99,                 # Max. radius in the complex plane
         phase_max=math.pi * 2,      # Phase in the form of [0, phase_max]
         **kwargs
@@ -229,6 +229,7 @@ class LRUBlock(nn.Module):
             residual = x
             x = layer(x) + residual
 
+        x = x[:, -1, :] # keep only last
         x = self.output_proj(x)
         return x
 

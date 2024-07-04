@@ -20,7 +20,7 @@ print(opts)
 
 d = KiMoReDataModule(
     data_dir='data/processed/kimore', 
-    exercise=2, 
+    exercise=1, 
     window_size=opts['window_size'],
     window_delta=opts['window_size'],
     batch_size=opts['batch_size'],

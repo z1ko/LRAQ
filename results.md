@@ -25,3 +25,42 @@ Trained for 400 epochs.
 |  2 |**1.352**|0.753|0.774|1.282|3.139|1.528|
 |  3 |**0.846**|0.210|0.369|1.105|1.737|0.845|
 |  4 |**0.971**|0.206|0.347|0.715|1.202|0.468|
+
+```json
+"r_min":0.8,
+"r_max":0.99,
+"args": [
+                "--epochs",
+                "800",
+                "--window_size",
+                "200",
+                "--window_delta",
+                "200",
+                "--learning_rate",
+                "0.001",
+                "--weight_decay",
+                "0.01",
+                "--batch_size",
+                "16",
+                "--dropout",
+                "0.40",
+                "--model_dim",
+                "32",
+                "--temporal_state_dim",
+                "32",
+                "--temporal_layers",
+                "2",
+                "--spatial_layers",
+                "2",
+                "--joint_features",
+                "6",
+                "--scheduler_step",
+                "300",
+                //"--dashboard"
+            ]
+```
+
+1.850 es1
+1.570 es2
+0.958 es3
+1.340 es4
