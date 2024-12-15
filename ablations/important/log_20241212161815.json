@@ -1,0 +1,109 @@
+{
+    "network_configuration": {
+        "dashboard": false,
+        "lru_phase": 6.283185307179586,
+        "lru_radius_min": 0.8,
+        "lru_radius_max": 0.99,
+        "model_dim": 32,
+        "joint_features": 6,
+        "temporal_state_dim": 48,
+        "temporal_layers": 2,
+        "spatial_layers": 2,
+        "dropout": 0.3,
+        "use_convolution": true,
+        "use_spatial": false,
+        "window_size": 200,
+        "window_delta": 200,
+        "batch_size": 10,
+        "dataset": null,
+        "learning_rate": 0.001,
+        "weight_decay": 0.001,
+        "scheduler_step": 300,
+        "checkpoint": false,
+        "checkpoint_epochs": 5,
+        "joint_count": 19,
+        "maximum_quality": 50.0
+    },
+    "experiments": [
+        {
+            "experiment": "Ex1+LRU+gMLP",
+            "exercise": 1,
+            "temporal_method": "LRU",
+            "spatial_method": "gMLP",
+            "options": [],
+            "best_loss_mean": 5.9573564499616625,
+            "best_loss_std": 0.6987492759849817,
+            "parameters": 73097
+        },
+        {
+            "experiment": "Ex1+LRU+NoSpatial",
+            "exercise": 1,
+            "temporal_method": "LRU",
+            "spatial_method": "NoSpatial",
+            "options": [],
+            "best_loss_mean": 6.358498233556747,
+            "best_loss_std": 0.4287697461124425,
+            "parameters": 47377
+        },
+        {
+            "experiment": "Ex1+RNN+gMLP",
+            "exercise": 1,
+            "temporal_method": "RNN",
+            "spatial_method": "gMLP",
+            "options": [],
+            "best_loss_mean": 4.963409954309464,
+            "best_loss_std": 0.7811429712707061,
+            "parameters": 55065
+        },
+        {
+            "experiment": "Ex1+RNN+NoSpatial",
+            "exercise": 1,
+            "temporal_method": "RNN",
+            "spatial_method": "NoSpatial",
+            "options": [],
+            "best_loss_mean": 5.395259591937065,
+            "best_loss_std": 0.6482156074379876,
+            "parameters": 29345
+        },
+        {
+            "experiment": "Ex1+GRU+gMLP",
+            "exercise": 1,
+            "temporal_method": "GRU",
+            "spatial_method": "gMLP",
+            "options": [],
+            "best_loss_mean": 5.324071106314659,
+            "best_loss_std": 0.9725338782452795,
+            "parameters": 63513
+        },
+        {
+            "experiment": "Ex1+GRU+NoSpatial",
+            "exercise": 1,
+            "temporal_method": "GRU",
+            "spatial_method": "NoSpatial",
+            "options": [],
+            "best_loss_mean": 5.549185362458229,
+            "best_loss_std": 0.7606978198862139,
+            "parameters": 37793
+        },
+        {
+            "experiment": "Ex1+LSTM+gMLP",
+            "exercise": 1,
+            "temporal_method": "LSTM",
+            "spatial_method": "gMLP",
+            "options": [],
+            "best_loss_mean": 4.244374631345272,
+            "best_loss_std": 0.5906194693789879,
+            "parameters": 67737
+        },
+        {
+            "experiment": "Ex1+LSTM+NoSpatial",
+            "exercise": 1,
+            "temporal_method": "LSTM",
+            "spatial_method": "NoSpatial",
+            "options": [],
+            "best_loss_mean": 5.167030280828476,
+            "best_loss_std": 0.5438090180568489,
+            "parameters": 42017
+        }
+    ]
+}

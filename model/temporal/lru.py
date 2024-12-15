@@ -14,9 +14,9 @@ class LRU(nn.Module):
     def __init__(
         self,
         state_dim,                  # The state dimension is the same as the input dimension and output dimension
-        r_min=0.7,                  # Min. radius in the complex plane
+        r_min=0.60,                 # Min. radius in the complex plane
         r_max=0.99,                 # Max. radius in the complex plane
-        phase_max=math.pi * 2,      # Phase in the form of [0, phase_max]
+        phase_max=math.pi, #math.pi * 2,      # Phase in the form of [0, phase_max]
         **kwargs
     ):
         super().__init__()
@@ -166,19 +166,21 @@ class GLU(nn.Module):
     def __init__(
         self,
         features,
-        dropout=0.0
+        dropout=None
     ):
         super().__init__()
 
         self.activation = nn.GELU()
-        self.dropout = nn.Dropout(p=dropout)
+        self.dropout = None if dropout is None else nn.Dropout(p=dropout)
         self.output_linear = nn.Sequential(
             nn.Linear(features, 2 * features),
             nn.GLU(dim=-1)
         )
 
     def forward(self, x):
-        x = self.dropout(self.activation(x))
+        x = self.activation(x)
+        if self.dropout is not None:
+            x = self.dropout(x)
         x = self.output_linear(x)
         return x
 
@@ -208,12 +210,12 @@ class LRUBlock(nn.Module):
 
         # Create all layers
         self.layers = nn.ModuleList()
-        for _ in range(self.layers_count):
+        for i in range(self.layers_count):
             self.layers.append(
                 nn.Sequential(
                     nn.LayerNorm(self.state_dim),
                     LRU(self.state_dim, **kwargs),
-                    GLU(self.state_dim, self.dropout)
+                    GLU(self.state_dim, self.dropout if i != self.layers_count - 1 else None)
                 )
             )
 

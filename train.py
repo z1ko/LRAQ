@@ -18,9 +18,10 @@ opts = parser.parse_args()
 opts = vars(opts)
 print(opts)
 
+print('running training for exercise n. ', opts['exercise'])
 d = KiMoReDataModule(
     data_dir='data/processed/kimore', 
-    exercise=1, 
+    exercise=opts['exercise'], 
     window_size=opts['window_size'],
     window_delta=opts['window_size'],
     batch_size=opts['batch_size'],
@@ -53,4 +54,3 @@ trainer.fit(
     train_dataloaders=d.train_dataloader(), 
     val_dataloaders=d.val_dataloader()
 )
-

@@ -4,6 +4,7 @@ def base_arg_parser(*argument_providers):
 
     parser = argparse.ArgumentParser()
     parser.add_argument('--dashboard', default=False, action='store_true')
+    parser.add_argument('--exercise', type=int, default=1)
 
     for provider in argument_providers:
         provider.add_parser_args(parser)
