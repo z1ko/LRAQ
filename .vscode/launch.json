@@ -74,6 +74,27 @@
             ]
         },
         {
+            "name": "Python: Train complete",
+            "type": "python",
+            "request": "launch",
+            "module": "train_complete",
+            "justMyCode": true,
+            "args": [
+                "--epochs",                 "100",
+                "--learning_rate",          "0.002",
+                "--weight_decay",           "0.001",
+                "--batch_size",             "10",
+                "--dropout",                "0.3",
+                "--model_dim",              "32",
+                "--temporal_state_dim",     "48",
+                "--temporal_layers",        "2",
+                "--spatial_layers",         "2",
+                "--joint_features",         "6",
+                "--scheduler_step",         "300",
+                "--temporal_method",        "LRU"
+            ]
+        },
+        {
             "name": "Python: Process KIMORE Dataset",
             "type": "python",
             "request": "launch",

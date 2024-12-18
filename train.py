@@ -1,7 +1,4 @@
 
-import matplotlib.pyplot as plt
-import wandb
-
 from lightning.pytorch import Trainer
 from lightning.pytorch.utilities.model_summary import ModelSummary
 from lightning.pytorch.loggers import WandbLogger
@@ -11,24 +8,33 @@ from model.gtt import G2TAQ
 
 from model.utils.args import base_arg_parser
 from model.utils.transform import Compose, JointDifference
-from dataset.kimore import KiMoReDataModule
+from dataset.kimore import KiMoReDataModuleFolded
 
-parser = base_arg_parser(LRGA, KiMoReDataModule)
+parser = base_arg_parser(LRGA, KiMoReDataModuleFolded)
 opts = parser.parse_args()
 opts = vars(opts)
 print(opts)
 
 print('running training for exercise n. ', opts['exercise'])
-d = KiMoReDataModule(
-    data_dir='data/processed/kimore', 
+#d = KiMoReDataModule(
+#    data_dir='data/processed/kimore', 
+#    exercise=opts['exercise'], 
+#    window_size=opts['window_size'],
+#    window_delta=opts['window_size'],
+#    batch_size=opts['batch_size'],
+#    leave_one_out=None,
+#    transform=Compose([
+#        JointDifference(),
+#    ])
+#)
+#d.setup()
+
+d = KiMoReDataModuleFolded(
+    filepath='data/processed/kimore_kfold.pickle', 
+    batch_size=opts['batch_size'], 
     exercise=opts['exercise'], 
-    window_size=opts['window_size'],
-    window_delta=opts['window_size'],
-    batch_size=opts['batch_size'],
-    leave_one_out=None,
-    transform=Compose([
-        JointDifference(),
-    ])
+    fold=0, 
+    transform=Compose([JointDifference()])
 )
 d.setup()
 

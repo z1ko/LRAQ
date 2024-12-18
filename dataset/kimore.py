@@ -1,46 +1,14 @@
 import torch
-import argparse
-import matplotlib.pyplot as plt
 import lightning
 import einops as ein
-import pandas as pd
-import copy
-import os
+import numpy as np
+import pickle
 
 from sklearn.preprocessing import StandardScaler
-from model.utils.transform import JointDifference, JointRelativePosition, Compose
 
-# All available subjects categories in the dataset
-SUBJECT_CATEGORIES = {
-    'expert': 'CG/Expert',
-    'non-expert': 'CG/NotExpert',
-    'stroke': 'GPP/Stroke',
-    'parkinson': 'GPP/Parkinson',
-    'backpain': 'GPP/BackPain'
-}
-
-# Available exercises
-EXERCISES = range(1, 6)
-
-# Joints of the body
-JOINTS_COUNT = 25
-
-# Features to be used
-FEATURES = ['pos_x', 'pos_y', 'pos_z']
-
-# Joints that are not usefull (hands, facial, feet)
-# source: https://lisajamhoury.medium.com/understanding-kinect-v2-joints-and-coordinate-system-4f4b90b9df16
-EXCLUDED_JOINTS = [
-    15, # foot_left 
-    19, # foot_right
-    21, # handtip_left
-    22, # thumb_left
-    23, # handtip_right
-    24  # thumb_right
-]
-
+___comment = """
 class KiMoReDataset(torch.utils.data.Dataset):
-    """
+    \"""
         KInematic Assessment of MOvement and Clinical Scores for
         Remote Monitoring of Physical REhabilitation
 
@@ -48,7 +16,7 @@ class KiMoReDataset(torch.utils.data.Dataset):
         with a quality scores assigned
 
         Each sample is of shape (frames, joints, features)
-    """
+    \"""
 
     def __init__(
         self,
@@ -129,11 +97,10 @@ class KiMoReDataset(torch.utils.data.Dataset):
     def __getitem__(self, idx):
         return self.samples[idx], self.targets[idx]
 
-
 class KiMoReDataModule(lightning.LightningDataModule):
-    """
+    \"""
         Dataloader for the KiMoRe dataset
-    """
+    \"""
 
     def __init__(
         self, 
@@ -196,149 +163,104 @@ class KiMoReDataModule(lightning.LightningDataModule):
         opts.add_argument('--batch_size', type=int, default=12)
         opts.add_argument('--dataset', type=str)
 
-# =======================================================================================
-# PREPROCESS
+"""
 
-def _load_single_exercise(samples, data_descriptor, filepath):
-    with open(filepath) as f:
-        frame = 0
-        required_tokens = 0
-        for line in f.readlines():
-            if len(line) >= 10:
-                data_descriptor['frame'] = frame
-                frame += 1
+def load_kimore(filepath, exercise, fold, train):
+    with open(filepath, 'rb') as f:
+        dataset_complete = pickle.load(f)
 
-                tokens = line.split(',')[:-1]
-                if required_tokens == 0:
-                    required_tokens = len(tokens)
+    # load only requested exercise and fold
+    dataset = dataset_complete['folded'][exercise][fold]
+    dataset = dataset['train' if train else 'val']
 
-                if len(tokens) != required_tokens:
-                    print(f"Error with {data_descriptor['subject']}")
-                    return # Ops, something wrong in the data
+    samples = np.stack(list(map(lambda x: x['frames'], dataset)))
+    targets = np.stack(list(map(lambda x: x['target'], dataset)))
 
-                joint = 0
-                for joint_id in range(JOINTS_COUNT):
-                    if joint_id in EXCLUDED_JOINTS:
-                        continue
-
-                    data_descriptor['joint'] = joint
-                    joint += 1
-
-                    # Insert data unit
-                    data_descriptor['pos_x'] = float(tokens[joint_id * 4 + 0])
-                    data_descriptor['pos_y'] = float(tokens[joint_id * 4 + 1])
-                    data_descriptor['pos_z'] = float(tokens[joint_id * 4 + 2])
-
-                    # Merge data
-                    for key, value in samples.items():
-                        samples[key].append(data_descriptor[key])
-
-def _load_evaluations(targets, data_descriptor, filepath):
-    with open(filepath) as f:
-        _, values = f.readline(), f.readline()
-        tokens = values.split(',')
-        #print(tokens)
-        for exercise in range(5):
-            # TODO: Maybe data is broken, check correct number of elements
-
-            eval_descriptor = copy.deepcopy(data_descriptor)
-            eval_descriptor['exercise'] = exercise
-            eval_descriptor['TS'] = float(tokens[1 + 0 + exercise])
-            eval_descriptor['PO'] = float(tokens[1 + 5 + exercise])
-            eval_descriptor['CF'] = float(tokens[1 + 10 + exercise])
-
-            # Merge data
-            for key, value in targets.items():
-                targets[key].append(eval_descriptor[key])
-
-if __name__ == '__main__':
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument('input', help='folder where raw dataset is located')
-    parser.add_argument('output', help='folder where to store dataset')
-    args = parser.parse_args()
-
-    # Resulting samples
-    samples = {
-
-        # Metadata
-        'type': [],
-        'subject': [],
-        'exercise': [],
-        'frame': [],
-        'joint': [],
-
-        # Effective data
-        'pos_x': [],
-        'pos_y': [],
-        'pos_z': []
-    }
-
-    # Resulting target for each exercise
-    targets = {
-
-        # Metadata
-        'type': [],
-        'subject': [],
-        'exercise': [],
-
-        # Effective data
-        'TS': [],
-        'PO': [],
-        'CF': []
-    }
-
-    # Dict for a single data entry
-    data_descriptor = {}
-
-    # Load all data
-    for subject_type in SUBJECT_CATEGORIES.values():
-        data_descriptor['type'] = subject_type
-
-        path = os.path.join(args.input, subject_type)
-        subjects_list = [f.name for f in os.scandir(path) if f.is_dir()]
-        for subject in subjects_list:
-            data_descriptor['subject'] = subject
-
-            # The dataset is strange, all exercises folders have the same label file containing the evaluations
-            # of all the exercises, such a waste of space. Process only the first one...
-            loaded_evaluations = False
-
-            # Process all exercises
-            subject_path = os.path.join(path, subject)
-            exercises_list = [f.name for f in os.scandir(subject_path) if f.is_dir()]
-            for exercise in exercises_list:
-                data_descriptor['exercise'] = int(exercise[-1:])
-
-                #print(f'processing {subject_type}/{subject}/{exercise}')
-                exercise_path = os.path.join(subject_path, exercise)
-
-                # Process evaluation data
-                if not loaded_evaluations:
-                    exercises_eval_path = os.path.join(exercise_path, 'Label')
-                    if os.path.exists(exercises_eval_path):
-                        for file in os.scandir(exercises_eval_path):
-                            if file.name.startswith('ClinicalAssessment') and file.name.endswith('.csv'):
-                                _load_evaluations(targets, data_descriptor, file.path)
-                                loaded_evaluations = True
-                                break
-
-                # Process frame data
-                exercise_raw_path = os.path.join(exercise_path, 'Raw')
-                if os.path.exists(exercise_raw_path):
-                    for file in os.scandir(exercise_raw_path):
-                        if file.name.startswith('JointPosition'):
-                            _load_single_exercise(samples, data_descriptor, file.path)
-
-    os.makedirs(args.output, exist_ok=True)
-
-    data_df = pd.DataFrame.from_dict(samples)
-    targets_df = pd.DataFrame.from_dict(targets)
-
-    print(data_df)
-    print(targets_df)
-
-    data_df.to_csv(os.path.join(args.output, 'samples.csv'))
-    targets_df.to_csv(os.path.join(args.output, 'targets.csv'))
+    return samples, targets
 
 
+class KiMoReDatasetFold(torch.utils.data.Dataset):
+    def __init__(
+        self,
+        filepath,
+        exercise,
+        fold,
+        transform,
+        train
+    ):
+        super().__init__()
+
+        self.filepath = filepath
+        self.exercise = exercise
+        self.train = train
+        self.fold = fold
+
+        samples, targets = load_kimore(self.filepath, self.exercise, self.fold, self.train)
+        self.samples = torch.from_numpy(samples).to(torch.float32)
+        self.targets = torch.from_numpy(targets).to(torch.float32)
+
+        # Apply transformations
+        self.samples = torch.stack([ transform(x) for x in self.samples[:] ])
+        # Keep only TS assessment value
+        self.targets = torch.stack([ x[..., 0].squeeze_(dim=-1) for x in self.targets[:]])
+        
+
+    def __len__(self):
+        return self.samples.shape[0]
+
+    def __getitem__(self, idx):
+        return self.samples[idx], self.targets[idx]
+
+
+class KiMoReDataModuleFolded(lightning.LightningDataModule):
+    def __init__(self, filepath, batch_size, exercise, fold, transform):
+        super().__init__()
+        self.filepath = filepath
+        self.batch_size = batch_size
+        self.exercise = exercise
+        self.fold = fold
+        self.transform = transform
+        self.scaler = StandardScaler()
+
+    def standardize(self, data, learn):
+        S, L, J, F = data.shape
+        samples = ein.rearrange(data, 'S L J F -> (S L) (J F)')
+        if learn:
+            samples = self.scaler.fit_transform(samples)
+        else:
+            samples = self.scaler.transform(samples)
+        
+        samples = ein.rearrange(samples, '(S L) (J F) -> S L J F', S=S, L=L, J=J, F=F)
+        return torch.tensor(samples, dtype=torch.float32)
+    
+    def setup(self, task=''):
+
+        self.train = KiMoReDatasetFold(self.filepath, self.exercise, self.fold, self.transform, train=True)
+        self.val = KiMoReDatasetFold(self.filepath, self.exercise, self.fold, self.transform, train=False)
+
+        # Standardize data
+        self.train.samples = self.standardize(self.train.samples, learn=True)
+        self.val.samples = self.standardize(self.val.samples, learn=False)
+
+        print(f'LOG: training   samples count: {len(self.train)}')
+        print(f'LOG: validation samples count: {len(self.val)}')
+
+    def train_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.train,
+            self.batch_size,
+            drop_last=False,
+            shuffle=True
+        )
+
+    def val_dataloader(self):
+        return torch.utils.data.DataLoader(
+            self.val,
+            self.batch_size,
+        )
+
+    @staticmethod
+    def add_parser_args(parser):
+        opts = parser.add_argument_group('dataset')
+        opts.add_argument('--batch_size', type=int, default=12)
+        opts.add_argument('--dataset', type=str)

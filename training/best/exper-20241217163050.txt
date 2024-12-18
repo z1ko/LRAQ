@@ -1,0 +1,6 @@
+{"dashboard": false, "exercise": 1, "lru_phase": 6.283185307179586, "lru_radius_min": 0.4, "lru_radius_max": 0.8, "model_dim": 32, "joint_features": 6, "temporal_state_dim": 48, "temporal_layers": 2, "spatial_layers": 2, "dropout": 0.3, "temporal_method": "LRU", "spatial_method": "gMLP", "no_conv": false, "batch_size": 10, "dataset": null, "learning_rate": 0.002, "weight_decay": 0.001, "scheduler_step": 300, "epochs": 100, "checkpoint": false, "checkpoint_epochs": 5}
+exercise=1,folds_mean=5.615181662142277,folds_stdev=2.0218616606801847,folds_best=3.0220881402492523
+exercise=2,folds_mean=7.388965117931366,folds_stdev=1.282117359899563,folds_best=5.835702395439148
+exercise=3,folds_mean=5.955978971719742,folds_stdev=2.357477442376309,folds_best=4.47490963935852
+exercise=4,folds_mean=4.820459008216858,folds_stdev=1.4701969830269652,folds_best=3.399269533157349
+exercise=5,folds_mean=5.770927449067433,folds_stdev=0.9132480646769889,folds_best=4.410735925038655
