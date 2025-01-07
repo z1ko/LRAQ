@@ -165,9 +165,13 @@ class KiMoReDataModule(lightning.LightningDataModule):
 
 """
 
-def load_kimore(filepath, exercise, fold, train):
-    with open(filepath, 'rb') as f:
-        dataset_complete = pickle.load(f)
+def load_kimore(filepath, exercise, fold, train, data=None):
+
+    if data is None:
+        with open(filepath, 'rb') as f:
+            dataset_complete = pickle.load(f)
+    else:
+        dataset_complete = data
 
     # load only requested exercise and fold
     dataset = dataset_complete['folded'][exercise][fold]
@@ -186,7 +190,8 @@ class KiMoReDatasetFold(torch.utils.data.Dataset):
         exercise,
         fold,
         transform,
-        train
+        train,
+        data=None
     ):
         super().__init__()
 
@@ -195,7 +200,7 @@ class KiMoReDatasetFold(torch.utils.data.Dataset):
         self.train = train
         self.fold = fold
 
-        samples, targets = load_kimore(self.filepath, self.exercise, self.fold, self.train)
+        samples, targets = load_kimore(self.filepath, self.exercise, self.fold, self.train, data=data)
         self.samples = torch.from_numpy(samples).to(torch.float32)
         self.targets = torch.from_numpy(targets).to(torch.float32)
 
@@ -213,9 +218,10 @@ class KiMoReDatasetFold(torch.utils.data.Dataset):
 
 
 class KiMoReDataModuleFolded(lightning.LightningDataModule):
-    def __init__(self, filepath, batch_size, exercise, fold, transform):
+    def __init__(self, filepath, batch_size, exercise, fold, transform, data=None):
         super().__init__()
         self.filepath = filepath
+        self.data=data
         self.batch_size = batch_size
         self.exercise = exercise
         self.fold = fold
@@ -235,8 +241,8 @@ class KiMoReDataModuleFolded(lightning.LightningDataModule):
     
     def setup(self, task=''):
 
-        self.train = KiMoReDatasetFold(self.filepath, self.exercise, self.fold, self.transform, train=True)
-        self.val = KiMoReDatasetFold(self.filepath, self.exercise, self.fold, self.transform, train=False)
+        self.train = KiMoReDatasetFold(self.filepath, self.exercise, self.fold, self.transform, data=self.data, train=True)
+        self.val = KiMoReDatasetFold(self.filepath, self.exercise, self.fold, self.transform, data=self.data, train=False)
 
         # Standardize data
         self.train.samples = self.standardize(self.train.samples, learn=True)

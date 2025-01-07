@@ -99,3 +99,34 @@ Conv+LRU+gMLP, con bias di selezione...
 3.670 es3
 3.110 es4
 3.230 mean
+
+## MIGLIORE IN ASSOLUTO!
+
+```json
+{
+    'model_dim': 96, 
+    'temporal_state_dim': 96, 
+    'temporal_layers': 4, 
+    'spatial_layers': 8, 
+    'dropout': 0.70, 
+    'batch_size': 12, 
+    'learning_rate': 0.002, 
+    'weight_decay': 0.001, 
+    'maximum_quality': 50.0, 
+    'joint_count': 19, 
+    'joint_features': 6, 
+    'scheduler_step': 100, 
+    'temporal_method': 'GRU', 
+    'spatial_method': 'gMLP', 
+    'no_conv': False, 
+    'epochs': 200
+}
+```
+
+'aggregated_mean': 4.854, 
+'parameters': 615745, 
+'ex1_mean': 4.040, 
+'ex2_mean': 6.224, 
+'ex3_mean': 4.616, 
+'ex4_mean': 5.051, 
+'ex5_mean': 4.337

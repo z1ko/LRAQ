@@ -1,0 +1,97 @@
+{
+    "options": {
+        "dashboard": false,
+        "exercise": 1,
+        "lru_phase": 6.283185307179586,
+        "lru_radius_min": 0.4,
+        "lru_radius_max": 0.8,
+        "model_dim": 32,
+        "joint_features": 6,
+        "temporal_state_dim": 48,
+        "temporal_layers": 2,
+        "spatial_layers": 2,
+        "dropout": 0.3,
+        "temporal_method": "LRU",
+        "spatial_method": "gMLP",
+        "no_conv": false,
+        "batch_size": 10,
+        "dataset": null,
+        "learning_rate": 0.002,
+        "weight_decay": 0.001,
+        "scheduler_step": 300,
+        "epochs": 500,
+        "checkpoint": false,
+        "checkpoint_epochs": 5
+    },
+    "exercises": [
+        {
+            "exercise": 1,
+            "folds_loss": [
+                4.790736824274063,
+                7.049787878990173,
+                3.765252113342285,
+                5.47782364487648,
+                7.272658884525299
+            ],
+            "folds_mean": 5.67125186920166,
+            "folds_stdev": 1.4925165200640862,
+            "folds_best": 3.765252113342285
+        },
+        {
+            "exercise": 2,
+            "folds_loss": [
+                6.228422021865844,
+                8.271294355392456,
+                4.9350728511810305,
+                6.191843628883362,
+                9.261092686653138
+            ],
+            "folds_mean": 6.977545108795166,
+            "folds_stdev": 1.7491842235340425,
+            "folds_best": 4.9350728511810305
+        },
+        {
+            "exercise": 3,
+            "folds_loss": [
+                4.917009711265564,
+                8.532579803466797,
+                3.505183744430542,
+                4.991982889175415,
+                4.773319792747498
+            ],
+            "folds_mean": 5.344015188217163,
+            "folds_stdev": 1.882830252280194,
+            "folds_best": 3.505183744430542
+        },
+        {
+            "exercise": 4,
+            "folds_loss": [
+                3.4720058917999266,
+                4.549626445770263,
+                3.899137544631958,
+                5.067365598678589,
+                6.637300729751587
+            ],
+            "folds_mean": 4.725087242126465,
+            "folds_stdev": 1.2305392273313411,
+            "folds_best": 3.4720058917999266
+        },
+        {
+            "exercise": 5,
+            "folds_loss": [
+                3.509300867716471,
+                6.675490538279216,
+                4.760785341262817,
+                6.287660280863444,
+                7.047539313634236
+            ],
+            "folds_mean": 5.656155268351237,
+            "folds_stdev": 1.4819297941092262,
+            "folds_best": 3.509300867716471
+        }
+    ],
+    "aggregated": {
+        "mean": 5.674810935338338,
+        "stdev": 0.8229334643997958
+    }
+}

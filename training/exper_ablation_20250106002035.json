@@ -1,0 +1,398 @@
+{
+    "configuration_base": {
+        "lru_phase": 6.283185307179586,
+        "lru_radius_min": 0.8,
+        "lru_radius_max": 0.99,
+        "model_dim": 80,
+        "joint_features": 6,
+        "temporal_state_dim": 200,
+        "temporal_layers": 6,
+        "spatial_layers": 8,
+        "dropout": 0.6,
+        "joint_count": 19,
+        "maximum_quality": 50.0,
+        "batch_size": 10,
+        "epochs": 200,
+        "learning_rate": 0.001,
+        "weight_decay": 0.0001,
+        "scheduler_step": 100
+    },
+    "experiments": {
+        "GRU+gMLP": {
+            "configuration": {
+                "temporal_method": "GRU",
+                "spatial_method": "gMLP",
+                "no_conv": false,
+                "lru_phase": 6.283185307179586,
+                "lru_radius_min": 0.8,
+                "lru_radius_max": 0.99,
+                "model_dim": 80,
+                "joint_features": 6,
+                "temporal_state_dim": 200,
+                "temporal_layers": 6,
+                "spatial_layers": 8,
+                "dropout": 0.6,
+                "joint_count": 19,
+                "maximum_quality": 50.0,
+                "batch_size": 10,
+                "epochs": 200,
+                "learning_rate": 0.001,
+                "weight_decay": 0.0001,
+                "scheduler_step": 100
+            },
+            "exercises": [
+                {
+                    "exercise": 1,
+                    "folds_loss": [
+                        3.8275861144065857,
+                        7.081581711769104,
+                        2.462107762694359,
+                        4.69955812394619,
+                        7.577027916908264
+                    ],
+                    "folds_mean": 5.129572325944901,
+                    "folds_stdev": 2.167707718837891,
+                    "folds_best": 2.462107762694359
+                },
+                {
+                    "exercise": 2,
+                    "folds_loss": [
+                        6.15454580783844,
+                        8.291054320335387,
+                        4.744132232666016,
+                        6.2675265073776245,
+                        6.201538920402527
+                    ],
+                    "folds_mean": 6.331759557723999,
+                    "folds_stdev": 1.2660849598621824,
+                    "folds_best": 4.744132232666016
+                },
+                {
+                    "exercise": 3,
+                    "folds_loss": [
+                        4.604369974136352,
+                        8.831620121002198,
+                        4.513059329986572,
+                        5.948970699310303,
+                        4.272315180301666
+                    ],
+                    "folds_mean": 5.634067060947419,
+                    "folds_stdev": 1.9036026687063197,
+                    "folds_best": 4.272315180301666
+                },
+                {
+                    "exercise": 4,
+                    "folds_loss": [
+                        4.379299640655518,
+                        4.675772213935852,
+                        3.7469250917434693,
+                        3.607798147201538,
+                        6.944330739974975
+                    ],
+                    "folds_mean": 4.67082516670227,
+                    "folds_stdev": 1.3451261084014305,
+                    "folds_best": 3.607798147201538
+                },
+                {
+                    "exercise": 5,
+                    "folds_loss": [
+                        3.9422451655069985,
+                        7.079052766164144,
+                        4.915043036142985,
+                        7.518280029296875,
+                        5.749812364578247
+                    ],
+                    "folds_mean": 5.84088667233785,
+                    "folds_stdev": 1.484673725903159,
+                    "folds_best": 3.9422451655069985
+                }
+            ],
+            "aggregated": {
+                "stdev": 0.6419608017548586,
+                "mean": 5.521422156731288
+            }
+        },
+        "GRU+NoSpatial": {
+            "configuration": {
+                "temporal_method": "GRU",
+                "spatial_method": "NoSpatial",
+                "no_conv": false,
+                "lru_phase": 6.283185307179586,
+                "lru_radius_min": 0.8,
+                "lru_radius_max": 0.99,
+                "model_dim": 80,
+                "joint_features": 6,
+                "temporal_state_dim": 200,
+                "temporal_layers": 6,
+                "spatial_layers": 8,
+                "dropout": 0.6,
+                "joint_count": 19,
+                "maximum_quality": 50.0,
+                "batch_size": 10,
+                "epochs": 200,
+                "learning_rate": 0.001,
+                "weight_decay": 0.0001,
+                "scheduler_step": 100
+            },
+            "exercises": [
+                {
+                    "exercise": 1,
+                    "folds_loss": [
+                        3.628199204802513,
+                        6.785212874412537,
+                        2.50997194647789,
+                        5.06453201174736,
+                        5.32304984331131
+                    ],
+                    "folds_mean": 4.662193176150322,
+                    "folds_stdev": 1.6437016507418873,
+                    "folds_best": 2.50997194647789
+                },
+                {
+                    "exercise": 2,
+                    "folds_loss": [
+                        5.700660657882691,
+                        8.11182074546814,
+                        5.449759674072266,
+                        9.181200408935547,
+                        8.665532994270325
+                    ],
+                    "folds_mean": 7.421794896125794,
+                    "folds_stdev": 1.729866604041662,
+                    "folds_best": 5.449759674072266
+                },
+                {
+                    "exercise": 3,
+                    "folds_loss": [
+                        4.0355233430862425,
+                        7.307261514663696,
+                        2.277491044998169,
+                        4.328468656539917,
+                        5.319493472576141
+                    ],
+                    "folds_mean": 4.653647606372833,
+                    "folds_stdev": 1.8451935162914916,
+                    "folds_best": 2.277491044998169
+                },
+                {
+                    "exercise": 4,
+                    "folds_loss": [
+                        4.236129260063171,
+                        5.1777161121368405,
+                        3.539489269256592,
+                        5.157884860038758,
+                        6.603446769714355
+                    ],
+                    "folds_mean": 4.942933254241943,
+                    "folds_stdev": 1.1541077964645572,
+                    "folds_best": 3.539489269256592
+                },
+                {
+                    "exercise": 5,
+                    "folds_loss": [
+                        4.610391457875569,
+                        6.6503753662109375,
+                        4.917057037353516,
+                        7.071497758229573,
+                        7.854457934697469
+                    ],
+                    "folds_mean": 6.220755910873413,
+                    "folds_stdev": 1.402695734486848,
+                    "folds_best": 4.610391457875569
+                }
+            ],
+            "aggregated": {
+                "stdev": 1.2154349414208292,
+                "mean": 5.580264968752861
+            }
+        },
+        "LSTM+gMLP": {
+            "configuration": {
+                "temporal_method": "LSTM",
+                "spatial_method": "gMLP",
+                "no_conv": false,
+                "lru_phase": 6.283185307179586,
+                "lru_radius_min": 0.8,
+                "lru_radius_max": 0.99,
+                "model_dim": 80,
+                "joint_features": 6,
+                "temporal_state_dim": 200,
+                "temporal_layers": 6,
+                "spatial_layers": 8,
+                "dropout": 0.6,
+                "joint_count": 19,
+                "maximum_quality": 50.0,
+                "batch_size": 10,
+                "epochs": 200,
+                "learning_rate": 0.001,
+                "weight_decay": 0.0001,
+                "scheduler_step": 100
+            },
+            "exercises": [
+                {
+                    "exercise": 1,
+                    "folds_loss": [
+                        4.167328476905823,
+                        6.803566932678223,
+                        2.793732672929764,
+                        5.41926509141922,
+                        7.60319447517395
+                    ],
+                    "folds_mean": 5.3574175298213955,
+                    "folds_stdev": 1.9447030174207036,
+                    "folds_best": 2.793732672929764
+                },
+                {
+                    "exercise": 2,
+                    "folds_loss": [
+                        5.780173873901367,
+                        7.820890188217163,
+                        5.177201461791992,
+                        8.21787428855896,
+                        7.942079305648804
+                    ],
+                    "folds_mean": 6.9876438236236575,
+                    "folds_stdev": 1.4012850187692694,
+                    "folds_best": 5.177201461791992
+                },
+                {
+                    "exercise": 3,
+                    "folds_loss": [
+                        4.215335154533387,
+                        7.114722967147827,
+                        5.154400491714478,
+                        4.624547100067138,
+                        6.63550181388855
+                    ],
+                    "folds_mean": 5.548901505470276,
+                    "folds_stdev": 1.2669805058778907,
+                    "folds_best": 4.215335154533387
+                },
+                {
+                    "exercise": 4,
+                    "folds_loss": [
+                        4.367063570022583,
+                        4.937472534179688,
+                        3.7844909191131593,
+                        4.029998731613159,
+                        7.593123817443848
+                    ],
+                    "folds_mean": 4.942429914474488,
+                    "folds_stdev": 1.5435836998380101,
+                    "folds_best": 3.7844909191131593
+                },
+                {
+                    "exercise": 5,
+                    "folds_loss": [
+                        3.608983039855957,
+                        7.682523091634114,
+                        4.812982201576233,
+                        6.597843170166016,
+                        6.102915128072103
+                    ],
+                    "folds_mean": 5.761049326260885,
+                    "folds_stdev": 1.584248888957449,
+                    "folds_best": 3.608983039855957
+                }
+            ],
+            "aggregated": {
+                "stdev": 0.7703831161510077,
+                "mean": 5.719488419930141
+            }
+        },
+        "LSTM+NoSpatial": {
+            "configuration": {
+                "temporal_method": "LSTM",
+                "spatial_method": "NoSpatial",
+                "no_conv": false,
+                "lru_phase": 6.283185307179586,
+                "lru_radius_min": 0.8,
+                "lru_radius_max": 0.99,
+                "model_dim": 80,
+                "joint_features": 6,
+                "temporal_state_dim": 200,
+                "temporal_layers": 6,
+                "spatial_layers": 8,
+                "dropout": 0.6,
+                "joint_count": 19,
+                "maximum_quality": 50.0,
+                "batch_size": 10,
+                "epochs": 200,
+                "learning_rate": 0.001,
+                "weight_decay": 0.0001,
+                "scheduler_step": 100
+            },
+            "exercises": [
+                {
+                    "exercise": 1,
+                    "folds_loss": [
+                        3.8357601165771484,
+                        7.739498615264893,
+                        7.798081398010254,
+                        4.726546660065651,
+                        5.6278088092803955
+                    ],
+                    "folds_mean": 5.945539119839668,
+                    "folds_stdev": 1.7810296301210982,
+                    "folds_best": 3.8357601165771484
+                },
+                {
+                    "exercise": 2,
+                    "folds_loss": [
+                        6.178627383708954,
+                        8.46610392332077,
+                        5.22180552482605,
+                        8.473800444602967,
+                        8.867914271354675
+                    ],
+                    "folds_mean": 7.441650309562683,
+                    "folds_stdev": 1.6334018011703986,
+                    "folds_best": 5.22180552482605
+                },
+                {
+                    "exercise": 3,
+                    "folds_loss": [
+                        3.267288088798523,
+                        9.273912572860718,
+                        5.034917879104614,
+                        5.845636010169983,
+                        5.040309643745422
+                    ],
+                    "folds_mean": 5.692412838935852,
+                    "folds_stdev": 2.2129949128622406,
+                    "folds_best": 3.267288088798523
+                },
+                {
+                    "exercise": 4,
+                    "folds_loss": [
+                        3.6304162979125976,
+                        4.574285650253296,
+                        2.8687851428985596,
+                        5.230835795402527,
+                        8.402891063690186
+                    ],
+                    "folds_mean": 4.9414427900314335,
+                    "folds_stdev": 2.1339445291126204,
+                    "folds_best": 2.8687851428985596
+                },
+                {
+                    "exercise": 5,
+                    "folds_loss": [
+                        3.6315651734670005,
+                        5.3620656331380205,
+                        5.647100289662679,
+                        7.025393009185791,
+                        7.329639434814453
+                    ],
+                    "folds_mean": 5.7991527080535885,
+                    "folds_stdev": 1.4797513022467588,
+                    "folds_best": 3.6315651734670005
+                }
+            ],
+            "aggregated": {
+                "stdev": 0.9124621494889971,
+                "mean": 5.964039553284645
+            }
+        }
+    }
+}

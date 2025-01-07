@@ -1,6 +1,8 @@
 import argparse
 import json
 import tempfile
+import datetime
+import pickle
 
 from model.regression import LRGA
 from model.utils.transform import Compose, JointDifference
@@ -10,78 +12,65 @@ from lightning.pytorch import Trainer, Callback
 from statistics import mean, stdev
 from ray import train, tune
 
-
-EXERCISES = [1,2,3,4,5]
-FOLDS = [0,1,2,3,4]
-
-
-class BestValidationCallback(Callback):
-    def __init__(self, log_best):
-        super().__init__()
-        self.best_loss = 10000.0
-        self.log_best = log_best
-
-    def on_validation_epoch_end(self, trainer, module):
-        mean_batches_loss = mean(module.validation_losses)
-        self.best_loss = min(mean_batches_loss, self.best_loss)
-        if self.log_best:
-            self.log("validation/best-loss-mae", self.best_loss, prog_bar=True)
-
+from train_complete import save_to_disk, train_complete
 
 # Complete training of the model
-def objective(config, data):
+def objective(config, time, data):
 
-    # Train model
-    callback = BestValidationCallback(log_best=True)
-    trainer = Trainer(max_epochs=config['epochs'], callbacks=[callback])
-    trainer.fit(
-        model=LRGA(joint_count=19, maximum_quality=50, **config),
-        train_dataloaders=data.train_dataloader(), 
-        val_dataloaders=data.val_dataloader()
-    )
-
-    # Send train result to Tune
+    train_result = train_complete(f'sweep', time, config, data=data, log=False)
     train.report({
-        'best_loss': callback.best_loss,
-        'memory': 0.0
+        'aggregated_mean': train_result['aggregated']['mean'],
+        'parameters': train_result['parameters'],
+        'ex1_mean': train_result['exercises'][0]['folds_mean'],
+        'ex2_mean': train_result['exercises'][1]['folds_mean'],
+        'ex3_mean': train_result['exercises'][2]['folds_mean'],
+        'ex4_mean': train_result['exercises'][3]['folds_mean'],
+        'ex5_mean': train_result['exercises'][4]['folds_mean'],
     })
 
 
-# Keep dataset here
-dataset = KiMoReDataModuleFolded(
-    filepath='data/processed/kimore_kfold.pickle',
-    batch_size=10,
-    transform=Compose([JointDifference()]),
-    exercise=1,
-    fold=0,
-)
-dataset.setup()
+# Load all datasets
+with open('data/processed/kimore_kfold.pickle', 'rb') as f:
+    data = pickle.load(f)
 
 # Here we define our configuration for the trials
-trainable_with_resources = tune.with_resources(objective, {'gpu': 0.25})
+time = datetime.datetime.now()
+trainable_with_resources = tune.with_resources(objective, {'gpu': 1.0})
 tuner = tune.Tuner(
-    tune.with_parameters(trainable_with_resources, data=dataset),
+    tune.with_parameters(trainable_with_resources, time=time, data=data),
+    tune_config=tune.TuneConfig(num_samples=30),
     param_space={
 
         # What we want to explore
-        'model_dim': tune.grid_search([32, 64, 128]),
-        'temporal_state_dim': tune.grid_search([32, 64, 128]),
-        'temporal_layers': tune.grid_search([2, 4, 6]),
-        'spatial_layers': tune.grid_search([2, 4, 6]),
+        'model_dim': tune.qrandint(32, 256, 32),
+        'temporal_state_dim': tune.qrandint(32, 256, 32),
+        'temporal_layers': tune.qrandint(4, 10, 2),
+        'spatial_layers': tune.qrandint(4, 10, 2),
+        'dropout': tune.quniform(0.2, 0.8, 0.05),
+        'batch_size': tune.qrandint(6, 16, 2),
+        'learning_rate': tune.quniform(0.0005, 0.002, 0.0005),
+        'weight_decay': tune.choice([0.0001, 0.001]),
 
         # Fixed
-        'learning_rate': 0.001,
-        'weight_decay': 0.001,
-        'dropout': 0.3,
+        'maximum_quality': 50.0,
+        'joint_count': 19,
         'joint_features': 6,
-        'scheduler_step': 300,
-        'temporal_method': 'LRU',
+        'scheduler_step': 100,
+        'temporal_method': 'GRU',
         'spatial_method': 'gMLP',
-        'batch_size': 10,
         'no_conv': False,
-        'epochs': 1
+        'epochs': 200
     }
 )
 
 results = tuner.fit()
-print(results.get_best_result(metric="best_loss", mode="min").config)
+print(
+    results.get_best_result(
+        metric="aggregated_mean", 
+        mode="min"
+    ).config
+)
+
+# Store result to file
+with open(f'sweep_result_{time}.pickle', 'wb') as f:
+    pickle.dump(results, f)

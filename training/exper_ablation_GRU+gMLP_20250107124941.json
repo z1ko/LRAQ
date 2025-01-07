@@ -1,0 +1,41 @@
+{
+    "configuration": {
+        "temporal_method": "GRU",
+        "spatial_method": "gMLP",
+        "no_conv": false,
+        "lru_phase": 6.283185307179586,
+        "lru_radius_min": 0.8,
+        "lru_radius_max": 0.99,
+        "model_dim": 96,
+        "joint_features": 6,
+        "temporal_state_dim": 96,
+        "temporal_layers": 4,
+        "spatial_layers": 8,
+        "dropout": 0.7,
+        "joint_count": 19,
+        "maximum_quality": 50.0,
+        "batch_size": 12,
+        "epochs": 200,
+        "learning_rate": 0.002,
+        "weight_decay": 0.001,
+        "scheduler_step": 100
+    },
+    "parameters": 615745,
+    "exercises": [
+        {
+            "exercise": 1,
+            "parameters": 615745,
+            "folds_loss": [
+                2.9351393580436707,
+                6.190044045448303,
+                2.29803067445755,
+                4.178142786026001,
+                6.000194311141968
+            ],
+            "folds_mean": 4.3203102350234985,
+            "folds_stdev": 1.75687503782372,
+            "folds_best": 2.29803067445755
+        }
+    ],
+    "aggregated": {}
+}

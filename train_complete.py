@@ -29,30 +29,17 @@ class BestValidationCallback(Callback):
         if self.log_best:
             self.log("validation/best-loss-mae", self.best_loss, prog_bar=True)
 
-def save_to_disk(time, results):
-    with open(f'training/exper_{time.strftime("%Y%m%d%H%M%S")}.json', 'w', encoding='utf-8') as f:
+
+def save_to_disk(string, time, results):
+    with open(f'training/exper_{string}_{time.strftime("%Y%m%d%H%M%S")}.json', 'w', encoding='utf-8') as f:
         json.dump(results, f, ensure_ascii=False, indent=4)
 
-parser = base_arg_parser(LRGA, KiMoReDataModuleFolded)
-opts = parser.parse_args()
-opts = vars(opts)
-print(opts)
+
+def count_model_parameters(model):
+    return sum(p.numel() for p in model.parameters())
 
 
-# Train the model with a specific configuration, on a subset of exercises, on all folds
-#def train(opts, )
-
-
-results = {
-    'options': opts,
-    'exercises': [],
-    'aggregated': {}
-}
-
-time = datetime.now()
-
-exercises_loss = []
-for exercise in EXERCISES:
+def train_all_folds(exercise, opts, data):
 
     folds_loss = []
     for fold in FOLDS:
@@ -60,41 +47,81 @@ for exercise in EXERCISES:
         # Load dataset
         dataset = KiMoReDataModuleFolded(
             filepath='data/processed/kimore_kfold.pickle',
+            data=data,
             batch_size=opts['batch_size'],
             transform=Compose([JointDifference()]),
             exercise=exercise,
             fold=fold,
         )
         dataset.setup()
-        
+            
+        #model=LRGA(joint_count=19, maximum_quality=50.0, **opts)
+        model=LRGA(**opts)
+        parameters = count_model_parameters(model)
+
         # Train model
         callback = BestValidationCallback(log_best=True)
         trainer = Trainer(max_epochs=opts['epochs'], callbacks=[callback])
         trainer.fit(
-            model=LRGA(joint_count=19, maximum_quality=50, **opts),
+            model=model,
             train_dataloaders=dataset.train_dataloader(), 
             val_dataloaders=dataset.val_dataloader()
         )
-        
+            
         # Save best model in this fold
         folds_loss.append(callback.best_loss)
 
     folds_mean = mean(folds_loss)
     folds_stdev = stdev(folds_loss)
     folds_best = min(folds_loss)
-    
-    exercises_loss.append(folds_mean)
-    results['exercises'].append({
+
+    return {
         'exercise': exercise,
+        'parameters': parameters,
         'folds_loss': folds_loss,
         'folds_mean': folds_mean,
         'folds_stdev': folds_stdev,
         'folds_best': folds_best
-    })
+    }
 
-    save_to_disk(time, results)
 
-# Store aggregated data
-results['aggregated']['mean'] = mean(exercises_loss)
-results['aggregated']['stdev'] = stdev(exercises_loss)
-save_to_disk(time, results)
+# Train the model with a specific configuration, on a subset of exercises, on all folds
+def train_complete(string, time, opts, log=True, data=None):
+
+    results = {
+        'configuration': opts,
+        'parameters': 0,
+        'exercises': [],
+        'aggregated': {}
+    }
+
+    for exercise in EXERCISES:
+        loss = train_all_folds(exercise, opts, data)
+        print(loss)
+
+        results['parameters'] = loss['parameters']
+        results['exercises'].append(loss)
+        
+        if log:
+            save_to_disk(string, time, results)
+
+    exercises_loss = [exercise['folds_mean'] for exercise in results['exercises']]
+    results['aggregated']['stdev'] = stdev(exercises_loss)
+    results['aggregated']['mean'] = mean(exercises_loss)
+
+    if log:
+        save_to_disk(string, time, results)
+
+    return results
+
+
+if __name__ == '__main__':
+
+    parser = base_arg_parser(LRGA, KiMoReDataModuleFolded)
+    opts = parser.parse_args()
+    opts = vars(opts)
+    print(opts)
+
+    time = datetime.now()
+    results = train_complete('X', time, opts)
+    print(results)
